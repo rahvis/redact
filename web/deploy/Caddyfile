@@ -1,0 +1,7 @@
+# Caddy automatically obtains and renews a Let's Encrypt certificate for
+# $SITE_DOMAIN (requires the domain's DNS to point at this droplet and ports
+# 80/443 to be reachable) and reverse-proxies to the app container.
+{$SITE_DOMAIN:redact.gitdate.ink} {
+	encode gzip
+	reverse_proxy coverup-web:8080
+}

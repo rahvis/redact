@@ -1,0 +1,42 @@
+# Production stack for the droplet: the CoverUP Web app behind a Caddy reverse
+# proxy that terminates TLS (automatic Let's Encrypt certs for $SITE_DOMAIN).
+#
+# The GitHub Actions deploy job sets COVERUP_IMAGE and SITE_DOMAIN in the
+# environment before running `docker compose up`.
+
+services:
+  coverup-web:
+    image: ${COVERUP_IMAGE:-ghcr.io/rahvis/coverup-web:latest}
+    container_name: coverup-web
+    restart: unless-stopped
+    # Uploads spool through /tmp during multipart parsing; tmpfs keeps that in
+    # RAM so PDFs never touch the droplet's disk.
+    tmpfs:
+      - /tmp
+    expose:
+      - "8080"          # internal only; Caddy is the public entrypoint
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8080/api/health').status==200 else 1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  caddy:
+    image: caddy:2
+    container_name: caddy
+    restart: unless-stopped
+    depends_on:
+      - coverup-web
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      SITE_DOMAIN: ${SITE_DOMAIN:-redact.gitdate.ink}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data      # persists issued TLS certs across restarts
+      - caddy_config:/config
+
+volumes:
+  caddy_data:
+  caddy_config:

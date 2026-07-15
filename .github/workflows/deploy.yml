@@ -1,0 +1,130 @@
+name: Deploy CoverUP Web
+
+# Build the web app image and deploy it to the DigitalOcean droplet as a Docker
+# container whenever the web app (or this workflow) changes on main.
+#
+# Flow: build web/ image -> push to GHCR -> SSH to droplet -> docker compose up.
+# Caddy (in the prod compose) serves it over HTTPS at $SITE_DOMAIN.
+#
+# Required repo secrets:
+#   DROPLET_HOST     - droplet hostname or IP (e.g. redact.gitdate.ink)
+#   DROPLET_USER     - SSH user (e.g. root)
+#   DROPLET_SSH_KEY  - private SSH deploy key (the public half is in the
+#                      droplet's ~/.ssh/authorized_keys)
+#   SITE_DOMAIN      - domain Caddy serves + gets a TLS cert for
+# (GITHUB_TOKEN is provided automatically and is used to push/pull from GHCR.)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'web/**'
+      - '.github/workflows/deploy.yml'
+  workflow_dispatch: {}   # allow manual "Run workflow"
+
+concurrency:
+  group: deploy-coverup-web
+  cancel-in-progress: false
+
+env:
+  IMAGE_NAME: coverup-web
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image: ${{ steps.image.outputs.ref }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compute lowercase image ref
+        id: image
+        run: echo "ref=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/${IMAGE_NAME}" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push image
+        uses: docker/build-push-action@v6
+        with:
+          context: web
+          file: web/Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ${{ steps.image.outputs.ref }}:latest
+            ${{ steps.image.outputs.ref }}:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Copy deploy files to the droplet
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.DROPLET_HOST }}
+          username: ${{ secrets.DROPLET_USER }}
+          key: ${{ secrets.DROPLET_SSH_KEY }}
+          source: "web/deploy/docker-compose.prod.yml,web/deploy/Caddyfile"
+          target: "/opt/coverup"
+          strip_components: 2
+
+      - name: Deploy on the droplet
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          IMAGE: ${{ needs.build-and-push.outputs.image }}
+          GHCR_USER: ${{ github.actor }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SITE_DOMAIN: ${{ secrets.SITE_DOMAIN }}
+        with:
+          host: ${{ secrets.DROPLET_HOST }}
+          username: ${{ secrets.DROPLET_USER }}
+          key: ${{ secrets.DROPLET_SSH_KEY }}
+          envs: IMAGE,GHCR_USER,GHCR_TOKEN,SITE_DOMAIN
+          script: |
+            set -e
+            export DEBIAN_FRONTEND=noninteractive
+
+            # 1. Ensure Docker + compose plugin exist (first-run bootstrap).
+            if ! command -v docker >/dev/null 2>&1; then
+              echo ">> Installing Docker..."
+              curl -fsSL https://get.docker.com | sh
+            fi
+            if ! docker compose version >/dev/null 2>&1; then
+              apt-get update -y && apt-get install -y docker-compose-plugin
+            fi
+
+            # 2. Open web ports if ufw is active.
+            if command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -q "Status: active"; then
+              ufw allow 80/tcp  || true
+              ufw allow 443/tcp || true
+            fi
+
+            # 3. Pull the freshly built image and (re)start the stack.
+            cd /opt/coverup
+            echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
+            export COVERUP_IMAGE="${IMAGE}:latest"
+            export SITE_DOMAIN="${SITE_DOMAIN}"
+            docker compose -f docker-compose.prod.yml pull
+            docker compose -f docker-compose.prod.yml up -d --remove-orphans
+            docker logout ghcr.io || true
+            docker image prune -f || true
+
+            echo ">> Deployed. Current containers:"
+            docker compose -f docker-compose.prod.yml ps
