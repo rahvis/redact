@@ -1,0 +1,7 @@
+**/node_modules
+**/dist
+**/__pycache__
+**/*.pyc
+backend/.venv-test
+backend/static
+backend/_engine_test.py

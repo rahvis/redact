@@ -1,0 +1,174 @@
+name: coverup
+title: CoverUP PDF
+summary: A simple tool for redacting PDFs and images
+description: |
+  CoverUP is a privacy-focused tool for redacting sensitive information in PDF
+  documents and images. Users can import PDF documents, which are converted into
+  images during the process. This conversion ensures that text cannot be copied
+  or indexed without OCR, enhancing the security of your information.
+
+  Key features:
+  - Import PDF, PNG, and JPG files
+  - Draw black or white redaction bars over sensitive content
+  - Invisible PDF layers are not converted, preventing accidental leaks
+  - High-quality and compressed export modes
+  - Session persistence - continue where you left off
+  - Password-protected PDF support
+  - Command-line file opening support
+
+adopt-info: coverup
+license: GPL-3.0
+grade: stable
+confinement: strict
+base: core24
+
+contact: mailto:support@digidigital.de
+website: https://coverup.digidigital.de
+source-code: https://github.com/digidigital/CoverUP
+issues: https://github.com/digidigital/CoverUP/issues
+donation: https://buymeacoffee.com/digidigital
+
+platforms:
+  amd64:
+    build-on: [amd64]
+    build-for: [amd64]
+
+plugs:
+  shmem:
+    interface: shared-memory
+    private: true
+
+apps:
+  coverup:
+    command: bin/launcher
+    desktop: share/applications/coverup.desktop
+    environment:
+      FONTCONFIG_PATH: $SNAP/fonts
+      FONTCONFIG_FILE: $SNAP/fonts/fonts.conf
+      XDG_DATA_DIRS: $SNAP/usr/share:$XDG_DATA_DIRS
+      GDK_SCALE: $GDK_SCALE
+      GDK_DPI_SCALE: $GDK_DPI_SCALE
+    plugs:
+      - home
+      - removable-media
+      - x11
+      - wayland
+      - desktop
+      - desktop-legacy
+      - network
+      - network-bind
+      - shmem
+      
+parts:
+  coverup:
+    plugin: nil
+    source: https://github.com/digidigital/CoverUP.git
+    source-type: git
+    source-tag: "0.4.2"
+
+
+    build-packages:
+      - python3
+      - python3-venv
+      - python3-pip
+      - python3-tk
+      - tk
+      - tcl
+      - build-essential
+      - libssl-dev
+      - libffi-dev
+      - pkg-config
+      - libpython3.12
+
+    stage-packages:
+      - libx11-6
+      - libxext6
+      - libxrender1
+      - libxcb1
+      - libxau6
+      - libxdmcp6
+      - fontconfig
+      - fonts-dejavu-core
+      - fonts-noto-core
+
+    override-build: |
+      set -euo pipefail
+
+      craftctl set version="$(git describe --tags --abbrev=0 | sed 's/^v//')"
+      craftctl default
+
+      # Build Python app using PyInstaller
+      VENV="$CRAFT_PART_BUILD/venv"
+      python3 -m venv "$VENV"
+      "$VENV/bin/python" -m pip install --upgrade pip setuptools wheel
+      "$VENV/bin/python" -m pip install "pyinstaller>=5.0.0"
+      "$VENV/bin/python" -m pip install .
+
+      "$VENV/bin/python" -m PyInstaller --noconfirm --onedir --name coverup CoverUP.py
+
+      mkdir -p "$CRAFT_PART_INSTALL/coverup"
+      cp -r dist/coverup/* "$CRAFT_PART_INSTALL/coverup/"
+      chmod +x "$CRAFT_PART_INSTALL/coverup/coverup"
+
+      # -------------------------------
+      # FONTS + FONTCONFIG
+      # -------------------------------
+      mkdir -p "$CRAFT_PART_INSTALL/fonts"
+
+      printf '%s\n' \
+        '<?xml version="1.0"?>' \
+        '<!DOCTYPE fontconfig SYSTEM "fonts.dtd">' \
+        '<fontconfig>' \
+        '  <dir>/snap/coverup/current/usr/share/fonts</dir>' \
+        '  <cachedir prefix="xdg">fontconfig</cachedir>' \
+        '  <config>' \
+        '    <rescan>' \
+        '      <int>30</int>' \
+        '    </rescan>' \
+        '  </config>' \
+        '</fontconfig>' \
+        > "$CRAFT_PART_INSTALL/fonts/fonts.conf"
+
+      # -------------------------------
+      # LAUNCHER SCRIPT
+      # -------------------------------
+      mkdir -p "$CRAFT_PART_INSTALL/bin"
+
+      printf '%s\n' \
+        '#!/bin/sh' \
+        'export FONTCONFIG_PATH="$SNAP/fonts"' \
+        'export FONTCONFIG_FILE="$SNAP/fonts/fonts.conf"' \
+        'export XDG_DATA_HOME="$SNAP/usr/share"' \
+        'exec "$SNAP/coverup/coverup" "$@"' \
+        > "$CRAFT_PART_INSTALL/bin/launcher"
+
+      chmod +x "$CRAFT_PART_INSTALL/bin/launcher"
+
+      # -------------------------------
+      # DESKTOP FILE
+      # -------------------------------
+      mkdir -p "$CRAFT_PART_INSTALL/share/applications"
+
+      printf '%s\n' \
+        '[Desktop Entry]' \
+        'Name=CoverUP PDF' \
+        'GenericName=PDF Redaction Tool' \
+        'Comment=Redact sensitive information in PDFs and images' \
+        'Exec=coverup %f' \
+        'Icon=${SNAP}/share/icons/coverup.svg' \
+        'Terminal=false' \
+        'Type=Application' \
+        'Categories=Office;Utility;Graphics;' \
+        'MimeType=application/pdf;image/png;image/jpeg;' \
+        'StartupNotify=true' \
+        'Keywords=pdf;redact;privacy;censor;black;bar;' \
+        > "$CRAFT_PART_INSTALL/share/applications/coverup.desktop"
+
+      mkdir -p "$CRAFT_PART_INSTALL/share/icons"
+      cp CoverUP.svg "$CRAFT_PART_INSTALL/share/icons/coverup.svg" || true
+      cp CoverUP.ico "$CRAFT_PART_INSTALL/share/icons/coverup.ico" || true
+
+    override-prime: |
+      craftctl default
+      rm -f "$CRAFT_PRIME/usr/lib/libBLTlite"* || true
+      rm -f "$CRAFT_PRIME/usr/lib/x86_64-linux-gnu/libXfixes.so.3"* || true

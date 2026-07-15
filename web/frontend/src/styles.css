@@ -1,0 +1,355 @@
+:root {
+  --bg: #f3f4f6;
+  --surface: #ffffff;
+  --border: #e2e5ea;
+  --ink: #1f2430;
+  --ink-soft: #5b6472;
+  --brand: #2f6feb;
+  --brand-ink: #ffffff;
+  --danger: #d64545;
+  --ok: #2e8b57;
+  --shadow: 0 1px 3px rgba(20, 25, 40, 0.08), 0 8px 24px rgba(20, 25, 40, 0.06);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  height: 100%;
+}
+
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica,
+    Arial, sans-serif;
+}
+
+.app {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ---- Header ---- */
+.header {
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding: 12px 20px;
+}
+.brand {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+.brand-mark {
+  color: var(--brand);
+  font-size: 20px;
+  transform: translateY(2px);
+}
+.brand-name {
+  font-weight: 700;
+  font-size: 18px;
+  letter-spacing: 0.2px;
+}
+.brand-tag {
+  color: var(--ink-soft);
+  font-size: 13px;
+}
+
+/* ---- Toolbar ---- */
+.toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 18px;
+  padding: 10px 20px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  box-shadow: 0 1px 0 rgba(20, 25, 40, 0.02);
+}
+.tb-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.tb-right {
+  margin-left: auto;
+}
+.tb-label {
+  color: var(--ink-soft);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+.tb-file {
+  max-width: 240px;
+  color: var(--ink-soft);
+}
+.tb-doc-icon {
+  color: var(--brand);
+}
+.tb-file-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tb-zoom {
+  min-width: 44px;
+  text-align: center;
+  color: var(--ink-soft);
+}
+.tb-count {
+  color: var(--ink-soft);
+  font-variant-numeric: tabular-nums;
+  margin-left: 4px;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  border-radius: 8px;
+  color: var(--ink);
+  cursor: pointer;
+  font-size: 13px;
+  transition: border-color 0.15s, background 0.15s;
+}
+.chip:hover:not(:disabled) {
+  border-color: #c6ccd6;
+}
+.chip.active {
+  border-color: var(--brand);
+  background: #eef4ff;
+  color: var(--brand);
+  font-weight: 600;
+}
+.chip:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.chip-icon {
+  min-width: 34px;
+  justify-content: center;
+  font-size: 16px;
+  line-height: 1;
+}
+.sw {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  display: inline-block;
+}
+.sw-black {
+  background: #000;
+}
+.sw-white {
+  background: #fff;
+  border: 1px solid #b6bcc7;
+}
+
+.btn-primary {
+  padding: 8px 16px;
+  border: 1px solid var(--brand);
+  background: var(--brand);
+  color: var(--brand-ink);
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+}
+.btn-primary:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* ---- Status banner ---- */
+.status {
+  padding: 8px 20px;
+  font-size: 13px;
+  border-bottom: 1px solid var(--border);
+}
+.status-info {
+  background: #eef4ff;
+  color: #274b8f;
+}
+.status-error {
+  background: #fdecec;
+  color: var(--danger);
+}
+.status-success {
+  background: #e9f7ef;
+  color: var(--ok);
+}
+
+/* ---- Document area ---- */
+.doc {
+  flex: 1;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 24px;
+}
+.page {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+.page-label {
+  color: var(--ink-soft);
+  font-size: 12px;
+}
+.page-stage {
+  position: relative;
+  box-shadow: var(--shadow);
+  background: #fff;
+  line-height: 0;
+}
+.page-canvas {
+  display: block;
+}
+.overlay {
+  position: absolute;
+  inset: 0;
+  cursor: crosshair;
+  line-height: normal;
+}
+.region {
+  position: absolute;
+  box-sizing: border-box;
+  border: 1px solid #222;
+  pointer-events: none;
+}
+.region-temp {
+  border-style: dashed;
+  border-color: var(--brand);
+}
+.region-del {
+  position: absolute;
+  top: -11px;
+  right: -11px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1px solid #fff;
+  background: var(--danger);
+  color: #fff;
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  /* Always visible so every bar can be removed individually. (`.region` has
+     pointer-events:none for drawing-through, which means a CSS :hover reveal on
+     the bar body would never fire — so the delete handle stays shown.) */
+  opacity: 0.85;
+  transition: opacity 0.12s, transform 0.12s;
+}
+.region-del:hover {
+  opacity: 1;
+  transform: scale(1.12);
+}
+.page-error {
+  color: var(--danger);
+  font-size: 13px;
+}
+
+/* ---- Footer ---- */
+.footer {
+  padding: 16px 24px 28px;
+  color: var(--ink-soft);
+  font-size: 12px;
+  text-align: center;
+  max-width: 720px;
+  margin: 0 auto;
+}
+
+/* ---- Dropzone (empty state) ---- */
+.dropzone-wrap {
+  flex: 1;
+  max-width: 640px;
+  margin: 48px auto;
+  padding: 0 20px;
+  width: 100%;
+}
+.dropzone {
+  border: 2px dashed #c3cad6;
+  border-radius: 16px;
+  background: var(--surface);
+  padding: 56px 24px;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+.dropzone:hover,
+.dropzone.over {
+  border-color: var(--brand);
+  background: #f7faff;
+}
+.dz-icon {
+  font-size: 40px;
+  color: var(--brand);
+}
+.dz-title {
+  margin-top: 12px;
+  font-size: 17px;
+  font-weight: 600;
+}
+.dz-sub {
+  margin-top: 6px;
+  color: var(--ink-soft);
+}
+.how {
+  margin: 28px auto 0;
+  color: var(--ink-soft);
+  line-height: 1.9;
+  max-width: 520px;
+}
+.how b {
+  color: var(--ink);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #14171d;
+    --surface: #1c2029;
+    --border: #2b313d;
+    --ink: #e7eaf0;
+    --ink-soft: #9aa4b4;
+    --brand: #5b8dff;
+  }
+  .chip.active {
+    background: #223056;
+  }
+  .status-info {
+    background: #1b2740;
+    color: #a9c4ff;
+  }
+  .status-error {
+    background: #3a1f22;
+    color: #ff9a9a;
+  }
+  .status-success {
+    background: #14301f;
+    color: #83e0aa;
+  }
+  .dropzone:hover,
+  .dropzone.over {
+    background: #1a2233;
+  }
+}

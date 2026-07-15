@@ -1,0 +1,9 @@
+# CoverUP Web backend
+fastapi>=0.110,<1.0
+uvicorn[standard]>=0.27,<1.0
+python-multipart>=0.0.9
+
+# Redaction engine (same libraries as the desktop CoverUP app)
+pypdfium2>=4.0.0
+Pillow>=10.0.0
+fpdf2>=2.7.0

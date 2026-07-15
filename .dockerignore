@@ -1,0 +1,12 @@
+# Keep the build context small. NOTE: README.md must stay — pyproject.toml
+# references it as the project readme, so pip needs it during install.
+.git
+.gitignore
+Screenshots/
+appimage/
+flatpak/
+snapcraft.yaml
+docs/
+coverup-files/
+*.ico
+*.svg

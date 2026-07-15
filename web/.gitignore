@@ -1,0 +1,8 @@
+node_modules/
+dist/
+__pycache__/
+*.pyc
+.venv-test/
+.e2e-out/
+backend/static/
+backend/sample.pdf
