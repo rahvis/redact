@@ -1,12 +1,27 @@
 """
 UI layout and icon definitions for CoverUP PDF.
+
+Licensed under GPL-3.0
+(c) 2024 - 2026 Björn Seipel
+Acrobat-suite additions (c) 2026 CoverUP contributors
 """
 
 import os
 import FreeSimpleGUI as sg
 
+from coverup.menu import build_menu
 from coverup.utils import get_script_root, find_fonts_folder, make_icons, draw_character
 from coverup.i18n import _
+
+
+# Canvas tool keys offered in the -TOOL- selector. Tools without a
+# registered implementation fall back to an informational popup until the
+# next build wave registers them (see coverup.canvas_tools).
+TOOL_KEYS = [
+    'redact', 'eraser', 'text', 'highlight', 'underline', 'strike', 'ink',
+    'rect', 'ellipse', 'line', 'arrow', 'stamp', 'image', 'signature',
+    'measure',
+]
 
 
 # Material Symbols glyphs for UI-icons
@@ -71,6 +86,7 @@ def create_layout(icons, image_bg_color='gray'):
     ]]
 
     layout = [
+        [sg.Menu(build_menu(), key='-MENUBAR-')],
         [
             sg.Push(background_color='gray'),
             sg.Push(background_color='gray'),
@@ -94,6 +110,9 @@ def create_layout(icons, image_bg_color='gray'):
             sg.Image(icons['high_quality'], key='TOGGLE_QUALITY',
                      tooltip=_('tooltip_quality'),
                      pad=0, enable_events=True, background_color=image_bg_color),
+            sg.Combo(TOOL_KEYS, default_value='redact', key='-TOOL-',
+                     enable_events=True, readonly=True, size=(10, 1),
+                     pad=(6, 0), tooltip=_('Annotation tool')),
             sg.Push(background_color='gray'),
             sg.Image(icons['left'], key='BACK', tooltip=_('tooltip_prev'),
                      pad=0, enable_events=True, background_color=image_bg_color),

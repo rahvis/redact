@@ -5,17 +5,65 @@ This module provides the WorkfileManager class that handles saving and loading
 of work sessions. Work sessions are stored as JSON files in the user's data
 directory, keyed by an MD5 hash of the original file path.
 
-Session data includes:
-    - Rectangle positions and colors for each page
-    - Current page number
-    - Fill color and output quality settings
+Workfile format v2 (see docs/dev-architecture.md):
+
+    {"version": 2,
+     "annotations": [[{"id": ..., "kind": "redact",
+                       "props": {"p1": [x, y], "p2": [x, y], "fill": color}}, ...]
+                     per page],
+     "decorations": {...}, "journal": [...],
+     "pages": N, "current_page": n,
+     "fill_color": "black", "output_quality": "high"}
+
+Legacy v1 files (a top-level ``"rectangles"`` key) are still loaded and
+migrated transparently. ``load()`` always returns rectangle data in the
+current in-app tuple form ``(p1, p2, fill, None)``. Passwords are never
+persisted.
+
+Licensed under GPL-3.0
+(c) 2024 - 2026 Björn Seipel
+Acrobat-suite additions (c) 2026 CoverUP contributors
 """
 
 import os
 import json
+import uuid
 
 from coverup.utils import encode_filepath, delete_oldest_files
 from coverup.image_container import export_rectangles
+
+
+def _rectangle_to_annotation(rectangle):
+    """
+    Convert a current-form rectangle tuple ``(p1, p2, fill, graph_id)`` into
+    a v2 annotation dict. Constructed inline on purpose — no dependency on
+    coverup.annotations, which may not exist yet.
+    """
+    return {
+        'id': uuid.uuid4().hex,
+        'kind': 'redact',
+        'props': {
+            'p1': [int(rectangle[0][0]), int(rectangle[0][1])],
+            'p2': [int(rectangle[1][0]), int(rectangle[1][1])],
+            'fill': rectangle[2],
+        },
+    }
+
+
+def _annotation_to_rectangle(annotation):
+    """
+    Convert a v2 annotation dict back into the current in-app tuple form
+    ``[p1, p2, fill, None]``. Returns None for kinds the redaction view
+    does not render (future annotation kinds).
+    """
+    if annotation.get('kind') != 'redact':
+        return None
+    props = annotation.get('props', {})
+    p1 = props.get('p1')
+    p2 = props.get('p2')
+    if p1 is None or p2 is None:
+        return None
+    return [tuple(p1), tuple(p2), props.get('fill', 'black'), None]
 
 
 class WorkfileManager:
@@ -53,15 +101,18 @@ class WorkfileManager:
         """
         self.file_path = file_path
 
-    def save(self, images, current_page, fill_color, output_quality):
+    def save(self, images, current_page, fill_color, output_quality,
+             decorations=None, journal=None):
         """
-        Save the current work session to a workfile.
+        Save the current work session as a v2 workfile.
 
         Args:
             images: List of ImageContainer objects with rectangle data.
             current_page: Currently displayed page index.
             fill_color: Current fill color ('black' or 'white').
             output_quality: Current quality setting ('high' or 'low').
+            decorations: Optional document-level decorations dict.
+            journal: Optional serialized page-ops journal (list).
         """
         if not self.file_path or not self.datadir:
             return
@@ -73,8 +124,15 @@ class WorkfileManager:
         rectangles = export_rectangles(images)
         if rectangles is not None:
             workfile_name = encode_filepath(self.file_path)
+            annotations = [
+                [_rectangle_to_annotation(rectangle) for rectangle in page_rectangles]
+                for page_rectangles in rectangles
+            ]
             work_data = {
-                'rectangles': rectangles,
+                'version': 2,
+                'annotations': annotations,
+                'decorations': decorations if decorations is not None else {},
+                'journal': journal if journal is not None else [],
                 'pages': len(images),
                 'current_page': current_page,
                 'fill_color': fill_color,
@@ -109,10 +167,15 @@ class WorkfileManager:
         """
         Load work data from the workfile if it exists.
 
+        Accepts both v1 workfiles (top-level 'rectangles') and v2 workfiles
+        (top-level 'annotations'). In both cases the returned dict carries
+        rectangle data in the current in-app tuple form (p1, p2, fill, None).
+
         Returns:
             dict: Work session data containing 'rectangles', 'pages',
-                  'current_page', 'fill_color', and 'output_quality',
-                  or None if no workfile exists.
+                  'current_page', 'fill_color' and 'output_quality' (plus
+                  'decorations' and 'journal' for v2 files), or None if no
+                  workfile exists or it cannot be parsed.
         """
         if not self.file_path:
             return None
@@ -120,11 +183,38 @@ class WorkfileManager:
         try:
             workfile_name = encode_filepath(self.file_path)
             workfile = os.path.join(self.datadir, workfile_name)
-            if os.path.isfile(workfile):
-                with open(workfile, 'r', encoding='utf-8') as f:
-                    work_data = json.load(f)
-                return work_data
-            else:
+            if not os.path.isfile(workfile):
                 return None
+            with open(workfile, 'r', encoding='utf-8') as f:
+                work_data = json.load(f)
+
+            if work_data.get('version', 1) >= 2 or 'annotations' in work_data:
+                rectangles = []
+                for page_annotations in work_data.get('annotations', []):
+                    page_rectangles = []
+                    for annotation in page_annotations:
+                        rectangle = _annotation_to_rectangle(annotation)
+                        if rectangle is not None:
+                            page_rectangles.append(rectangle)
+                    rectangles.append(page_rectangles)
+            else:
+                # v1: rectangles stored directly; drop stale graph ids.
+                rectangles = [
+                    [[tuple(rectangle[0]), tuple(rectangle[1]), rectangle[2], None]
+                     for rectangle in page_rectangles]
+                    for page_rectangles in work_data.get('rectangles', [])
+                ]
+
+            result = {
+                'rectangles': rectangles,
+                'pages': work_data.get('pages'),
+                'current_page': work_data.get('current_page', 0),
+                'fill_color': work_data.get('fill_color'),
+                'output_quality': work_data.get('output_quality'),
+            }
+            if work_data.get('version', 1) >= 2:
+                result['decorations'] = work_data.get('decorations', {})
+                result['journal'] = work_data.get('journal', [])
+            return result
         except Exception:
             return None

@@ -162,8 +162,11 @@ open-ended supported, raises ValueError with offending token).
 
 ## i18n
 
-New user-visible strings: add `'en'` keys to `translations.py` (other languages fall
-back automatically). Key naming: `menu_*`, `dlg_*`, `tool_*`, `err_*`, `msg_*`.
+`i18n._(key)` returns the key itself when no translation exists. Convention for ALL
+new feature strings: pass the final English text as the key, e.g.
+`_('Merge PDFs…')`. Do NOT edit `translations.py` (avoids conflicts; other languages
+fall back to English, which is the accepted v1 behavior). Existing keys
+(`tooltip_*`, `error_*`, …) keep working unchanged.
 
 ## Tests
 
