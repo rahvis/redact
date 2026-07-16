@@ -1,5 +1,5 @@
 """
-Tests for coverup.compare.
+Tests for workonward_read.compare.
 
 License: GPL-3.0
 (c) 2024 - 2026 Björn Seipel
@@ -13,7 +13,7 @@ import pytest
 from fpdf import FPDF
 
 import fixtures
-from coverup.compare import (
+from workonward_read.compare import (
     CompareResult,
     PageDiff,
     compare_pdfs,

@@ -15,25 +15,25 @@ import pytest
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
-def test_import_coverup():
+def test_import_workonward_read():
     """The package imports without side effects (no GUI, no display)."""
-    import coverup
+    import workonward_read
 
-    assert coverup.__version__
+    assert workonward_read.__version__
 
 
 def test_version_matches_pyproject():
-    """coverup.__version__ must equal the version in pyproject.toml."""
+    """workonward_read.__version__ must equal the version in pyproject.toml."""
     import tomllib
 
-    import coverup
+    import workonward_read
 
     pyproject_path = os.path.join(REPO_ROOT, "pyproject.toml")
     with open(pyproject_path, "rb") as fh:
         pyproject = tomllib.load(fh)
 
-    assert coverup.__version__ == pyproject["project"]["version"], (
-        f"coverup.__version__ ({coverup.__version__}) does not match "
+    assert workonward_read.__version__ == pyproject["project"]["version"], (
+        f"workonward_read.__version__ ({workonward_read.__version__}) does not match "
         f"pyproject.toml ({pyproject['project']['version']}) - "
         "bump both together before tagging a release"
     )
@@ -41,7 +41,7 @@ def test_version_matches_pyproject():
 
 def test_fonts_folder_resolves_and_has_required_fonts():
     """The resource lookup used by the frozen app must find the fonts."""
-    from coverup.utils import find_fonts_folder, get_resource_root
+    from workonward_read.utils import find_fonts_folder, get_resource_root
 
     fonts_dir = find_fonts_folder(get_resource_root())
     assert os.path.isdir(fonts_dir)
@@ -65,15 +65,15 @@ def test_tcl_is_8_6():
 
 
 def test_module_cli_version_exits_zero():
-    """`python -m coverup --version` works from the repo root."""
+    """`python -m workonward_read --version` works from the repo root."""
     result = subprocess.run(
-        [sys.executable, "-m", "coverup", "--version"],
+        [sys.executable, "-m", "workonward_read", "--version"],
         cwd=REPO_ROOT,
         capture_output=True,
         text=True,
         timeout=60,
     )
     assert result.returncode == 0, (
-        f"`{sys.executable} -m coverup --version` failed "
+        f"`{sys.executable} -m workonward_read --version` failed "
         f"(rc={result.returncode})\nstdout: {result.stdout}\nstderr: {result.stderr}"
     )

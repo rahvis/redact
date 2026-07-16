@@ -7,7 +7,7 @@
 
     codesign force deep options runtime \
       entitlements packaging/macos/entitlements.plist \
-      sign "Developer ID Application: ..." dist/CoverUP.app
+      sign "Developer ID Application: ..." "dist/WorkOnward Read.app"
 
   The hardened runtime blocks unsigned executable memory and library
   loading, which PyInstaller-frozen Python apps (ctypes, bundled dylibs

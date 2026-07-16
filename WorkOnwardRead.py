@@ -1,0 +1,15 @@
+#!/usr/bin/env python3
+"""
+WorkOnward Read - A tool for redacting PDF files and images.
+
+This is the main entry point script that maintains backward compatibility.
+The actual implementation is in the workonward_read package.
+
+Licensed under GPL-3.0
+(c) 2024 - 2026 Björn Seipel
+"""
+
+from workonward_read.main import main
+
+if __name__ == "__main__":
+    main()

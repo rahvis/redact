@@ -1,5 +1,5 @@
 """
-Tests for coverup.pdf_ops — merge/split/extract, encryption, sanitize,
+Tests for workonward_read.pdf_ops — merge/split/extract, encryption, sanitize,
 properties and rotation.
 
 License: GPL-3.0
@@ -16,7 +16,7 @@ from pypdf.annotations import Link
 from pypdf.constants import UserAccessPermissions as UAP
 from pypdf.generic import DictionaryObject, NameObject, StreamObject, TextStringObject
 
-from coverup import pdf_ops
+from workonward_read import pdf_ops
 
 
 # ---------------------------------------------------------------------------
@@ -307,7 +307,7 @@ def test_write_and_read_properties_unicode_roundtrip(tmp_path):
         "author": "Björn Größé",
         "subject": "Ünïcode ✓",
         "keywords": "秘密, prüfung",
-        "creator": "CoverUP tests",
+        "creator": "WorkOnward Read tests",
         "created": datetime(2026, 1, 2, 3, 4, 5),
     })
 
@@ -316,7 +316,7 @@ def test_write_and_read_properties_unicode_roundtrip(tmp_path):
     assert props["author"] == "Björn Größé"
     assert props["subject"] == "Ünïcode ✓"
     assert props["keywords"] == "秘密, prüfung"
-    assert props["creator"] == "CoverUP tests"
+    assert props["creator"] == "WorkOnward Read tests"
     assert "2026" in str(props["created"])
     assert props["pages"] == 3
     assert props["encrypted"] is False

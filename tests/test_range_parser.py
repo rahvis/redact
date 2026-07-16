@@ -1,4 +1,4 @@
-"""Tests for coverup.dialogs.common.parse_page_ranges.
+"""Tests for workonward_read.dialogs.common.parse_page_ranges.
 
 Licensed under GPL-3.0
 (c) 2024 - 2026 Björn Seipel
@@ -7,7 +7,7 @@ Acrobat-suite additions (c) 2026 CoverUP contributors
 
 import pytest
 
-from coverup.dialogs.common import parse_page_ranges
+from workonward_read.dialogs.common import parse_page_ranges
 
 
 def test_mixed_spec_from_contract():

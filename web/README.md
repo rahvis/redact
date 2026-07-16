@@ -1,11 +1,11 @@
-# CoverUP Web — Secure PDF Redaction
+# WorkOnward Read Web — Secure PDF Redaction
 
-A full-stack web version of [CoverUP](../README.md). Upload a PDF from your
+A full-stack web version of [WorkOnward Read](../README.md) (based on CoverUP by Björn Seipel, GPL-3.0). Upload a PDF from your
 computer, drag black or white bars over sensitive content (like Adobe Acrobat's
 "Mark for Redaction"), and download a redacted PDF where the covered content is
 **permanently removed** — not just hidden behind a box.
 
-It reuses CoverUP's proven redaction model: every page is **rasterized to an
+It reuses the desktop app's proven redaction model (inherited from CoverUP): every page is **rasterized to an
 image**, the bars are **painted as solid pixels** onto that image, and a brand
 new PDF is rebuilt from the images with **no text layer**. Covered content
 cannot be recovered by copy/paste, `pdftotext`, "remove the overlay", or by
@@ -28,7 +28,7 @@ cd web
 docker compose up --build      # → http://localhost:8090
 ```
 
-Stop it: `docker rm -f coverup-web` (or `docker compose down`).
+Stop it: `docker rm -f workonward-read-web` (or `docker compose down`).
 
 > The bundled image serves the frontend **and** the API from one origin, so the
 > whole product is a single URL. Processing happens in memory on your own
@@ -100,7 +100,7 @@ Returns `application/pdf` (the redacted file). Errors: `400` bad input,
 - The output is a **fresh** PDF, so the source's metadata, annotations,
   attachments, and hidden layers do not carry over.
 - Every page is rasterized, even pages you didn't draw on — the whole document
-  loses its text layer (this is intentional and matches desktop CoverUP).
+  loses its text layer (this is intentional and matches the desktop app).
 - Caveat: a bar only removes what it visually covers. Draw bars over the full
   extent of anything sensitive.
 

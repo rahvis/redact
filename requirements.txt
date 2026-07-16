@@ -1,4 +1,4 @@
-# CoverUP PDF - Dependencies
+# WorkOnward Read - Dependencies
 # Install with: pip install -r requirements.txt
 
 FreeSimpleGUI>=5.0.0

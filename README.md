@@ -1,24 +1,28 @@
-# CoverUP PDF Redaction Software
+# WorkOnward Read — PDF Redaction Software
 
-**CoverUP** is a free software, developed in Python, designed to provide a secure and straightforward method for redacting PDF files. It enables users to conceal sensitive text passages by overlaying them with black or white bars.
+![WorkOnward Read logo](WorkOnwardRead.svg)
 
-Users can import PDF documents into CoverUP, which are then converted into images. This conversion process ensures that the text cannot be copied from the document or indexed without OCR, enhancing the security of your information. Additionally, invisible layers within the PDF are not converted, providing an extra layer of security.
+**WorkOnward Read** is a free software, developed in Python, designed to provide a secure and straightforward method for redacting PDF files. It enables users to conceal sensitive text passages by overlaying them with black or white bars.
+
+Users can import PDF documents into WorkOnward Read, which are then converted into images. This conversion process ensures that the text cannot be copied from the document or indexed without OCR, enhancing the security of your information. Additionally, invisible layers within the PDF are not converted, providing an extra layer of security.
 
 It also supports the import of PNG and JPG files, in addition to PDFs.
 
-Given that image-based PDFs can become quite large, **CoverUP** offers two modes: a high-quality mode that maintains the visual fidelity of the document, and a compressed mode that reduces file size at the expense of some visual quality.
+Given that image-based PDFs can become quite large, **WorkOnward Read** offers two modes: a high-quality mode that maintains the visual fidelity of the document, and a compressed mode that reduces file size at the expense of some visual quality.
 
-Whether you're dealing with a single page or an entire document, **CoverUP** provides a flexible and easy solution for all your PDF redaction needs.
+Whether you're dealing with a single page or an entire document, **WorkOnward Read** provides a flexible and easy solution for all your PDF redaction needs.
 
-Support the project: [Buy me a pizza!](https://buymeacoffee.com/digidigital) 👍
+## Credits — based on CoverUP
+
+**WorkOnward Read is based on [CoverUP](https://github.com/digidigital/CoverUP) by Björn Seipel ([digidigital](https://digidigital.de)), GPL-3.0.**
+All original copyright notices are preserved in the source headers. Support the
+original author: [Buy him a pizza!](https://buymeacoffee.com/digidigital) 👍
 
 ---
 
 ![A screenshot of PDF redaction Software | Ein Screenshot der Software zum Schwärzen von PDF-Dokumenten](https://raw.githubusercontent.com/digidigital/CoverUP/main/Screenshots/CoverUP_screenshot.png)
 
 ---
-
-Visit the [CoverUP PDF Microsite](https://coverup.digidigital.de) - This software is a [digidigital](https://digidigital.de) project.
 
 ## Features
 
@@ -35,33 +39,40 @@ Visit the [CoverUP PDF Microsite](https://coverup.digidigital.de) - This softwar
 
 ## Installation
 
-### Linux - Snap Store
+### Linux - Snap Store (upstream CoverUP)
+
+The Snap Store channel below ships the **upstream CoverUP** app by digidigital,
+not WorkOnward Read. To install WorkOnward Read on Linux, build the snap from
+this repository (`snapcraft.yaml`) or use the AppImage/Flatpak recipes in
+`appimage/` and `flatpak/`.
 
 [![Get it from the Snap Store](https://snapcraft.io/static/images/badges/en/snap-store-black.svg)](https://snapcraft.io/coverup)
 
-[![coverup](https://snapcraft.io/coverup/badge.svg)](https://snapcraft.io/coverup)
-
 ```bash
-sudo snap install coverup
+sudo snap install coverup   # upstream CoverUP, not WorkOnward Read
 ```
 
 ### Python Package (pip)
 
 ```bash
+# WorkOnward Read (this project), from a checkout of this repository:
+pip install .
+
+# The upstream CoverUP package remains available on PyPI as:
 pip install coverup-pdf
 ```
 
 ### Windows / Other
 
-[Windows Installer and other download options](https://github.com/digidigital/CoverUP/releases/latest)
+[Windows Installer and other download options](https://github.com/rahvis/redact/releases/latest)
 
 ## Downloads (Windows & macOS)
 
-Each [GitHub release](https://github.com/digidigital/CoverUP/releases/latest) ships three desktop artifacts:
+Each GitHub release ships three desktop artifacts:
 
-- **`CoverUP-Setup-<version>-x64.exe`** — Windows 64-bit installer (per-user by default, no admin required). Silent install: `/VERYSILENT /SUPPRESSMSGBOXES /NORESTART`
-- **`CoverUP-<version>-macOS-arm64.dmg`** — macOS on Apple Silicon (M1 and newer)
-- **`CoverUP-<version>-macOS-x86_64.dmg`** — macOS on Intel processors
+- **`WorkOnwardRead-Setup-<version>-x64.exe`** — Windows 64-bit installer (per-user by default, no admin required). Silent install: `/VERYSILENT /SUPPRESSMSGBOXES /NORESTART`
+- **`WorkOnwardRead-<version>-macOS-arm64.dmg`** — macOS on Apple Silicon (M1 and newer)
+- **`WorkOnwardRead-<version>-macOS-x86_64.dmg`** — macOS on Intel processors
 
 **First-launch warnings** (the app is open source and not code-signed with a paid certificate):
 
@@ -76,7 +87,7 @@ Each [GitHub release](https://github.com/digidigital/CoverUP/releases/latest) sh
 
 ### Graphical Interface
 
-Simply launch **CoverUP** and use the toolbar to:
+Simply launch **WorkOnward Read** and use the toolbar to:
 1. Open a PDF or image file
 2. Draw redaction bars by clicking and dragging
 3. Use the eraser tool to remove bars
@@ -86,13 +97,13 @@ Simply launch **CoverUP** and use the toolbar to:
 
 ```bash
 # Open a file directly
-coverup document.pdf
+workonward-read document.pdf
 
 # Open an image
-coverup screenshot.png
+workonward-read screenshot.png
 
 # Show version
-coverup --version
+workonward-read --version
 ```
 
 ## Development
@@ -106,18 +117,18 @@ coverup --version
 
 ```bash
 # Clone the repository
-git clone https://github.com/digidigital/CoverUP.git
-cd CoverUP
+git clone https://github.com/rahvis/redact.git
+cd redact
 
 # Install dependencies
 pip install -r requirements.txt
 
 # Run from source
-python CoverUP.py
+python WorkOnwardRead.py
 
 # Or install as package
 pip install -e .
-coverup
+workonward-read
 ```
 
 ### Building Packages
@@ -141,24 +152,28 @@ twine upload dist/*
 # Install PyInstaller
 pip install pyinstaller
 
-# Build executable
-pyinstaller --onefile --windowed --icon=CoverUP.ico CoverUP.py
+# Build (onedir; also used by the Windows installer and macOS app)
+pyinstaller packaging/workonward_read.spec --noconfirm
 ```
 
 ### Internationalization (i18n)
 
-CoverUP supports 25 languages. The UI automatically detects the system language and displays translations accordingly.
+WorkOnward Read supports 25 languages. The UI automatically detects the system language and displays translations accordingly.
 
 **Supported languages:** English, German, Spanish, French, Italian, Portuguese, Romanian, Dutch, Swedish, Danish, Norwegian, Icelandic, Polish, Czech, Slovak, Bulgarian, Serbian, Croatian, Slovenian, Greek, Turkish, Lithuanian, Latvian, Estonian, Chinese, Hindi
 
-Translations are stored in `coverup/translations.py`. To add or modify translations, edit the `TRANSLATIONS` dictionary in that file.
+Translations are stored in `workonward_read/translations.py`. To add or modify translations, edit the `TRANSLATIONS` dictionary in that file.
 
 ## License
 
 This project is licensed under the GPL-3.0 License - see the [LICENSE](LICENSE) file for details.
 
+WorkOnward Read is based on CoverUP by Björn Seipel (digidigital), GPL-3.0.
+Original copyright: (c) 2024 - 2026 Björn Seipel.
+
 ## FOSS Credits
 
+- [CoverUP](https://github.com/digidigital/CoverUP) - the original application this project is based on
 - [FreeSimpleGUI](https://github.com/spyoungtech/FreeSimpleGui) - GUI framework
 - [pypdfium2](https://github.com/pypdfium2-team/pypdfium2) - PDF rendering
 - [fpdf2](https://py-pdf.github.io/fpdf2/) - PDF creation
@@ -167,35 +182,43 @@ This project is licensed under the GPL-3.0 License - see the [LICENSE](LICENSE) 
 
 ---
 
-# Schwärzen von PDF Dokumenten mit CoverUP
+# Schwärzen von PDF Dokumenten mit WorkOnward Read
 
-**CoverUP** ist eine kostenlose Software, die in Python entwickelt wurde, um eine sichere und unkomplizierte Methode zur Schwärzung von PDF-Dateien bereitzustellen. Sie ermöglicht es den Benutzern, sensible Textpassagen zu verbergen, indem sie diese mit schwarzen oder weißen Balken überlagern.
+**WorkOnward Read** ist eine kostenlose Software, die in Python entwickelt wurde, um eine sichere und unkomplizierte Methode zur Schwärzung von PDF-Dateien bereitzustellen. Sie ermöglicht es den Benutzern, sensible Textpassagen zu verbergen, indem sie diese mit schwarzen oder weißen Balken überlagern.
 
-Benutzer können PDF-Dokumente in **CoverUP** importieren, die dann in Bilder umgewandelt werden. Dieser Umwandlungsprozess stellt sicher, dass der Text nicht ohne zusätzliche Texterkennung kopiert oder indexiert werden kann, was die Sicherheit der Informationen erhöht. Zusätzlich werden unsichtbare Schichten innerhalb der PDF nicht konvertiert, was eine zusätzliche Sicherheitsebene gegen versehentliche Veröffentlichung bietet.
+Benutzer können PDF-Dokumente in **WorkOnward Read** importieren, die dann in Bilder umgewandelt werden. Dieser Umwandlungsprozess stellt sicher, dass der Text nicht ohne zusätzliche Texterkennung kopiert oder indexiert werden kann, was die Sicherheit der Informationen erhöht. Zusätzlich werden unsichtbare Schichten innerhalb der PDF nicht konvertiert, was eine zusätzliche Sicherheitsebene gegen versehentliche Veröffentlichung bietet.
 
 Es unterstützt auch den Import von PNG- und JPG-Dateien, zusätzlich zu PDFs.
 
-Da bildbasierte PDFs recht groß werden können, bietet CoverUP zwei Exportoptonen an: einen Modus in hoher Qualität, der die visuelle Genauigkeit des Dokuments weitestgehend beibehält, und einen komprimierten Modus, der die Dateigröße der exportierten PDF-Datei auf Kosten von visueller Qualität reduziert.
+Da bildbasierte PDFs recht groß werden können, bietet WorkOnward Read zwei Exportoptonen an: einen Modus in hoher Qualität, der die visuelle Genauigkeit des Dokuments weitestgehend beibehält, und einen komprimierten Modus, der die Dateigröße der exportierten PDF-Datei auf Kosten von visueller Qualität reduziert.
 
-Ob Sie mit einer einzelnen Seite oder einem gesamten Dokument arbeiten, **CoverUP** bietet eine flexible und einfache Lösung für alle Ihre Bedürfnisse zur Schwärzung von PDFs.
+Ob Sie mit einer einzelnen Seite oder einem gesamten Dokument arbeiten, **WorkOnward Read** bietet eine flexible und einfache Lösung für alle Ihre Bedürfnisse zur Schwärzung von PDFs.
+
+**WorkOnward Read basiert auf [CoverUP](https://github.com/digidigital/CoverUP) von Björn Seipel ([digidigital](https://digidigital.de)), GPL-3.0.**
 
 ## Installation
 
-### Linux - Snap Store
+### Linux - Snap Store (Original CoverUP)
+
+Der folgende Snap-Store-Kanal liefert das **Original CoverUP** von digidigital,
+nicht WorkOnward Read:
 
 [![Get it from the Snap Store](https://snapcraft.io/static/images/badges/en/snap-store-black.svg)](https://snapcraft.io/coverup)
 
 ```bash
-sudo snap install coverup
+sudo snap install coverup   # Original CoverUP, nicht WorkOnward Read
 ```
 
 ### Python-Paket (pip)
 
 ```bash
+# WorkOnward Read (dieses Projekt), aus diesem Repository:
+pip install .
+
+# Das Original-CoverUP-Paket bleibt auf PyPI verfügbar als:
 pip install coverup-pdf
 ```
 
 ### Windows / Andere
 
-[Windows Installer und andere Downloadoptionen](https://github.com/digidigital/CoverUP/releases/latest)
-
+[Windows Installer und andere Downloadoptionen](https://github.com/rahvis/redact/releases/latest)

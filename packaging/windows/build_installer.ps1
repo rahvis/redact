@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Build the CoverUP Windows app (PyInstaller onedir) and the Inno Setup installer.
+    Build the WorkOnward Read Windows app (PyInstaller onedir) and the Inno Setup installer.
 
 .DESCRIPTION
     Run from the repository root:
@@ -11,9 +11,9 @@
       1. Create a build venv (.venv-build) with Python 3.13
       2. pip install the project + PyInstaller (wheels only, constrained)
       3. Verify Tcl/Tk is 8.6 (Tcl 9 breaks FreeSimpleGUI, see docs/tcl9-migration.md)
-      4. PyInstaller build via packaging/coverup.spec -> dist\CoverUP\
+      4. PyInstaller build via packaging/workonward_read.spec -> dist\WorkOnwardRead\
       5. Smoke test the frozen exe (--version)
-      6. Compile the installer with Inno Setup -> Output\CoverUP-Setup-<ver>-x64.exe
+      6. Compile the installer with Inno Setup -> Output\WorkOnwardRead-Setup-<ver>-x64.exe
 
 .PARAMETER Python
     Command used to create the build venv. Default: 'py -3.13'.
@@ -34,13 +34,13 @@ $RepoRoot = Resolve-Path (Join-Path $PSScriptRoot '..\..')
 Set-Location $RepoRoot
 Write-Host "Repo root: $RepoRoot"
 
-# --- Parse version from coverup/__init__.py ----------------------------------
-$initContent = Get-Content (Join-Path $RepoRoot 'coverup\__init__.py') -Raw
+# --- Parse version from workonward_read/__init__.py --------------------------
+$initContent = Get-Content (Join-Path $RepoRoot 'workonward_read\__init__.py') -Raw
 if ($initContent -notmatch '__version__\s*=\s*["'']([^"'']+)["'']') {
-    throw 'Could not parse __version__ from coverup\__init__.py'
+    throw 'Could not parse __version__ from workonward_read\__init__.py'
 }
 $Version = $Matches[1]
-Write-Host "CoverUP version: $Version"
+Write-Host "WorkOnward Read version: $Version"
 
 # --- Create build venv --------------------------------------------------------
 $VenvDir = Join-Path $RepoRoot '.venv-build'
@@ -66,11 +66,11 @@ if ($LASTEXITCODE -ne 0) { throw 'Tcl/Tk is not 8.6 - FreeSimpleGUI requires Tcl
 
 # --- PyInstaller build ---------------------------------------------------------
 Write-Host 'Building with PyInstaller...'
-& $VenvPython -m PyInstaller packaging\coverup.spec --noconfirm
+& $VenvPython -m PyInstaller packaging\workonward_read.spec --noconfirm
 if ($LASTEXITCODE -ne 0) { throw 'PyInstaller build failed' }
 
 # --- Smoke test the frozen exe -------------------------------------------------
-$FrozenExe = Join-Path $RepoRoot 'dist\CoverUP\CoverUP.exe'
+$FrozenExe = Join-Path $RepoRoot 'dist\WorkOnwardRead\WorkOnwardRead.exe'
 if (-not (Test-Path $FrozenExe)) { throw "Frozen exe not found: $FrozenExe" }
 Write-Host 'Smoke testing frozen exe (--version)...'
 & $FrozenExe --version
@@ -81,8 +81,8 @@ if (-not (Test-Path $Iscc)) {
     throw "ISCC.exe not found at '$Iscc'. Install Inno Setup 6 or pass -Iscc <path>."
 }
 Write-Host "Compiling installer with $Iscc ..."
-& $Iscc "/DCOVERUP_VERSION=$Version" packaging\windows\installer.iss
+& $Iscc "/DWORKONWARD_VERSION=$Version" packaging\windows\installer.iss
 if ($LASTEXITCODE -ne 0) { throw 'Inno Setup compilation failed' }
 
 Write-Host ''
-Write-Host "Done. Installer: Output\CoverUP-Setup-$Version-x64.exe"
+Write-Host "Done. Installer: Output\WorkOnwardRead-Setup-$Version-x64.exe"

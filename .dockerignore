@@ -8,5 +8,6 @@ flatpak/
 snapcraft.yaml
 docs/
 coverup-files/
+workonward-read-files/
 *.ico
 *.svg

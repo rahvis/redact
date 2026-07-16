@@ -1,4 +1,4 @@
-"""Tests for coverup.forms (pypdf AcroForm listing and filling).
+"""Tests for workonward_read.forms (pypdf AcroForm listing and filling).
 
 Form fixtures are synthesized at test time — no binary fixtures.
 
@@ -13,7 +13,7 @@ import fixtures
 import pytest
 from pypdf import PdfReader, PdfWriter
 
-from coverup import forms
+from workonward_read import forms
 
 
 def _make_form_with_checkbox(path):

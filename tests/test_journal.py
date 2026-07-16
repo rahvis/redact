@@ -1,5 +1,5 @@
 """
-Tests for coverup.pdf_ops.PageOpsJournal and apply_journal.
+Tests for workonward_read.pdf_ops.PageOpsJournal and apply_journal.
 
 Randomized (seeded) op sequences are replayed both on lightweight fake
 ImageContainer-likes and on a real synthesized PDF, then the two worlds are
@@ -18,7 +18,7 @@ import fixtures  # noqa: F401  (path setup / consistency with other suites)
 from PIL import Image
 from pypdf import PdfReader, PdfWriter
 
-from coverup.pdf_ops import PT_PER_PX, PX_PER_PT, PageOpsJournal, apply_journal
+from workonward_read.pdf_ops import PT_PER_PX, PX_PER_PT, PageOpsJournal, apply_journal
 
 
 def px(pt):

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build CoverUP.app for macOS (native arch of this machine).
+# Build "WorkOnward Read.app" for macOS (native arch of this machine).
 #
 # Usage (from anywhere; the script cd's to the repo root):
 #   bash packaging/macos/build_app.sh
@@ -33,8 +33,8 @@ echo "==> Arch:       $ARCH"
     exit 1
 }
 
-[ -f "${SCRIPT_DIR}/CoverUP.icns" ] || {
-    echo "ERROR: packaging/macos/CoverUP.icns missing. Run packaging/macos/make_icns.sh first." >&2
+[ -f "${SCRIPT_DIR}/WorkOnwardRead.icns" ] || {
+    echo "ERROR: packaging/macos/WorkOnwardRead.icns missing. Run packaging/macos/make_icns.sh first." >&2
     exit 1
 }
 
@@ -62,9 +62,9 @@ echo "==> Checking Tcl/Tk version (must be 8.6)..."
 
 # --- PyInstaller build -----------------------------------------------------------
 echo "==> Building with PyInstaller..."
-"$VPY" -m PyInstaller packaging/coverup.spec --noconfirm
+"$VPY" -m PyInstaller packaging/workonward_read.spec --noconfirm
 
-APP="${REPO_ROOT}/dist/CoverUP.app"
+APP="${REPO_ROOT}/dist/WorkOnward Read.app"
 [ -d "$APP" ] || { echo "ERROR: $APP was not produced" >&2; exit 1; }
 
 # --- Ad-hoc codesign -------------------------------------------------------------
@@ -74,6 +74,6 @@ codesign --verify --deep --strict "$APP"
 
 # --- Smoke test ------------------------------------------------------------------
 echo "==> Smoke testing (--version)..."
-"${APP}/Contents/MacOS/CoverUP" --version
+"${APP}/Contents/MacOS/WorkOnwardRead" --version
 
 echo "==> Done: $APP"

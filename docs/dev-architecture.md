@@ -1,4 +1,4 @@
-# CoverUP Acrobat-Suite Architecture Contracts
+# WorkOnward Read Acrobat-Suite Architecture Contracts
 
 Binding contracts for the feature build-out on `feature/acrobat-suite`. Every module must
 conform; integration relies on these exact shapes. Python: `.venv/bin/python` (3.13, Tk 8.6).
@@ -18,7 +18,7 @@ Canvas/annotation coordinates are in ORIGINAL-image pixel space at 200 PPI
 Conversions: `px = pt * 200/72`, `pt = px * 72/200`. PDF y-axis is flipped
 (`y_pt = page_height_pt - y_px * 72/200`).
 
-## AppState (`coverup/state.py`)
+## AppState (`workonward_read/state.py`)
 
 ```python
 @dataclass
@@ -39,7 +39,7 @@ class AppState:
     thumbnails_visible: bool = False
 ```
 
-## Handler registry (`coverup/handlers/`)
+## Handler registry (`workonward_read/handlers/`)
 
 Each group module (`file.py, edit.py, view.py, organize.py, protect.py, convert.py,
 review.py, sign.py, annotate.py, help.py`) defines:
@@ -48,12 +48,12 @@ review.py, sign.py, annotate.py, help.py`) defines:
 HANDLERS: dict[str, Callable[[sg.Window, AppState], None]] = {...}
 ```
 
-`coverup/handlers/__init__.py` imports every group and merges into one `HANDLERS` dict
+`workonward_read/handlers/__init__.py` imports every group and merges into one `HANDLERS` dict
 (duplicate keys are a startup error). `main.py` dispatches menu events through it.
-Handlers own their dialogs (call `coverup.dialogs.<group>`), validation, and calling
+Handlers own their dialogs (call `workonward_read.dialogs.<group>`), validation, and calling
 business functions — synchronously if fast, else via `tasks.run_task`.
 
-## Menu (`coverup/menu.py`)
+## Menu (`workonward_read/menu.py`)
 
 Items are `'<translated label>::<KEY>'`; keys are stable. Full key set:
 
@@ -73,7 +73,7 @@ Items are `'<translated label>::<KEY>'`; keys are stable. Full key set:
 `main.py` normalizes events: `if isinstance(event, str) and '::' in event:
 event = event.rsplit('::', 1)[-1]`.
 
-## Canvas tools (`coverup/canvas_tools.py`)
+## Canvas tools (`workonward_read/canvas_tools.py`)
 
 ```python
 class CanvasTool(Protocol):
@@ -92,7 +92,7 @@ Coordinates arriving at tools are already zoom-corrected to original-image px
 Tools that add annotations must push an undo snapshot first
 (`state.undo.setdefault(p, UndoStack()).push(...)`).
 
-## Annotation model (`coverup/annotations.py`)
+## Annotation model (`workonward_read/annotations.py`)
 
 `Annotation(id: str, kind: str, props: dict, graph_ids: list)` — `graph_ids` transient.
 Kinds & required props (all coords original-image px):
@@ -120,9 +120,9 @@ Decorations dict (document-level): keys `watermark {text|png_b64, opacity, angle
 `header_footer {left, center, right, position('header'|'footer'), size_px}`,
 `page_numbers {template, start_at, position}`, `bates {prefix, start, digits, position}`.
 Templates substitute `{page} {total} {date} {bates}`. Fonts: DejaVuSans[-Bold].ttf in
-`coverup/fonts/` (resolve via `utils.find_fonts_folder`).
+`workonward_read/fonts/` (resolve via `utils.find_fonts_folder`).
 
-## Workfile v2 (`coverup/workfile.py`)
+## Workfile v2 (`workonward_read/workfile.py`)
 
 ```json
 {"version": 2, "annotations": [[{ann dict}...] per page], "decorations": {...},
@@ -132,7 +132,7 @@ Templates substitute `{page} {total} {date} {bates}`. Fonts: DejaVuSans[-Bold].t
 v1 files (`"rectangles"` key) migrate via `annotations.migrate_v1_rectangle`.
 Passwords are never persisted.
 
-## PageOpsJournal (`coverup/pdf_ops.py`)
+## PageOpsJournal (`workonward_read/pdf_ops.py`)
 
 Ops (indices refer to state at time of op): `('delete', [idx...])`, `('move', src, dst)`,
 `('rotate', {idx: deg})`, `('insert_blank', idx, [w_pt, h_pt])`,
@@ -141,7 +141,7 @@ Ops (indices refer to state at time of op): `('delete', [idx...])`, `('move', sr
 list of (source, transform)` consumed by `apply_journal(input, journal, output, password)`.
 `to_dict()/from_dict()` for the workfile.
 
-## Background tasks (`coverup/tasks.py`)
+## Background tasks (`workonward_read/tasks.py`)
 
 ```python
 run_task(window, fn, *args, key='-TASK-', **kwargs)
@@ -152,11 +152,11 @@ Daemon thread; worker communicates ONLY via
 main.py handles these tuple events (progress bar, popup on error, completion callbacks
 stored in a dict on state).
 
-## Dialogs (`coverup/dialogs/`)
+## Dialogs (`workonward_read/dialogs/`)
 
 One module per group mirroring handlers. Each dialog: `modal=True, keep_on_top=True`,
-centered via `coverup.dialogs.common.centered(parent_window)`, returns a plain request
-dict or None. Shared helpers in `coverup/dialogs/common.py`: `centered`, `error_popup`,
+centered via `workonward_read.dialogs.common.centered(parent_window)`, returns a plain request
+dict or None. Shared helpers in `workonward_read/dialogs/common.py`: `centered`, `error_popup`,
 `info_popup`, `file_open_row`, `parse_page_ranges("1-3,7,9-") -> list[int]` (0-based,
 open-ended supported, raises ValueError with offending token).
 

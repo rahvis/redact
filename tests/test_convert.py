@@ -1,5 +1,5 @@
 """
-Tests for coverup.convert — export/conversion tools.
+Tests for workonward_read.convert — export/conversion tools.
 
 All fixtures are synthesized at test time (see tests/fixtures.py).
 
@@ -16,7 +16,7 @@ from PIL import Image
 from pypdf import PdfReader
 
 import fixtures
-from coverup import convert
+from workonward_read import convert
 
 
 A4_PT = (595.28, 841.89)

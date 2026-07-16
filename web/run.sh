@@ -1,22 +1,22 @@
 #!/usr/bin/env bash
-# Build and run CoverUP Web, then print the URL.
+# Build and run WorkOnward Read Web, then print the URL.
 set -euo pipefail
 cd "$(dirname "$0")"
 
 # Host port (override: PORT=9000 ./run.sh). Defaults to 8090.
 PORT="${PORT:-8090}"
 
-echo ">> Building coverup-web image (first build compiles the frontend; give it a few min)..."
-docker build -t coverup-web .
+echo ">> Building workonward-read-web image (first build compiles the frontend; give it a few min)..."
+docker build -t workonward-read-web .
 
 echo ">> (Re)starting container on port ${PORT}..."
-docker rm -f coverup-web >/dev/null 2>&1 || true
-docker run -d --name coverup-web -p "${PORT}:8080" --tmpfs /tmp coverup-web
+docker rm -f workonward-read-web >/dev/null 2>&1 || true
+docker run -d --name workonward-read-web -p "${PORT}:8080" --tmpfs /tmp workonward-read-web
 
 cat <<EOF
 
 ============================================================
- CoverUP Web is running. Open:
+ WorkOnward Read Web is running. Open:
 
    http://localhost:${PORT}
 
@@ -24,6 +24,6 @@ cat <<EOF
  then click "Redact & Download". Covered content is flattened
  into an image and permanently removed — nothing is stored.
 
- Stop it with:  docker rm -f coverup-web
+ Stop it with:  docker rm -f workonward-read-web
 ============================================================
 EOF

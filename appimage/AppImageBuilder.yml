@@ -1,3 +1,7 @@
+# WorkOnward Read AppImage recipe — built from LOCAL source (this checkout),
+# not a git clone of the upstream repository. Run from the repo root:
+#     appimage-builder --recipe appimage/AppImageBuilder.yml
+# WorkOnward Read is based on CoverUP by Björn Seipel (digidigital), GPL-3.0.
 version: 1
 
 AppDir:
@@ -13,11 +17,16 @@ AppDir:
       #echo "APPDIR = ${APPDIR:-<unset>}"
       export APPDIR="$(pwd)/AppDir"
 
-      # Clone the repository if not already present
-      if [ ! -d "CoverUP" ]; then
-        git clone --depth 1 --branch 0.4.2 https://github.com/digidigital/CoverUP.git
+      # Build from the LOCAL source tree (run this recipe from the repo root).
+      # A pristine copy is staged into workonward-read-src/ so build
+      # artifacts (venv, dist) do not pollute the checkout.
+      if [ ! -d "workonward-read-src" ]; then
+        mkdir -p workonward-read-src
+        tar --exclude=./AppDir --exclude=./workonward-read-src --exclude=./.git \
+            --exclude=./venv --exclude=./.venv --exclude=./dist --exclude=./build \
+            -cf - . | tar -xf - -C workonward-read-src
       fi
-      cd CoverUP
+      cd workonward-read-src
 
       # Create virtual environment and install dependencies
       python3 -m venv venv
@@ -28,28 +37,28 @@ AppDir:
       ./venv/bin/python -m pip install . --no-cache-dir
 
       # Build with PyInstaller in onedir mode
-      ./venv/bin/python -m PyInstaller --noconfirm --onedir --name coverup CoverUP.py
+      ./venv/bin/python -m PyInstaller --noconfirm --onedir --name workonward-read WorkOnwardRead.py
 
       # Ensure AppDir exists and copy built files
       mkdir -p "$APPDIR/usr/bin"
-      echo "Copying from $(pwd)/dist/coverup to $APPDIR/usr/bin"
-      cp -r dist/coverup/* "$APPDIR/usr/bin/"
-      chmod +x "$APPDIR/usr/bin/coverup" || true
+      echo "Copying from $(pwd)/dist/workonward-read to $APPDIR/usr/bin"
+      cp -r dist/workonward-read/* "$APPDIR/usr/bin/"
+      chmod +x "$APPDIR/usr/bin/workonward-read" || true
 
       # Copy icons
       mkdir -p "$APPDIR/usr/share/icons/hicolor/scalable/apps"
-      cp CoverUP.svg "$APPDIR/usr/share/icons/hicolor/scalable/apps/coverup.svg" || true
+      cp WorkOnwardRead.svg "$APPDIR/usr/share/icons/hicolor/scalable/apps/workonward-read.svg" || true
 
       # Copy fontconfig (best effort)
       mkdir -p "$APPDIR/etc/fonts"
       cp -r /etc/fonts/* "$APPDIR/etc/fonts/" || true
 
   app_info:
-    id: de.digidigital.coverup
-    name: CoverUP PDF
-    icon: coverup
+    id: org.workonward.read
+    name: WorkOnward Read
+    icon: workonward-read
     version: 0.4.2
-    exec: usr/bin/coverup
+    exec: usr/bin/workonward-read
     exec_args: $@
 
   apt:
@@ -106,4 +115,4 @@ AppDir:
 
 AppImage:
   arch: x86_64
-  # update-information: gh-releases-zsync|digidigital|CoverUP|latest|CoverUP-*x86_64.AppImage.zsync
+  # update-information: gh-releases-zsync|rahvis|redact|latest|WorkOnwardRead-*x86_64.AppImage.zsync

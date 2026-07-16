@@ -1,11 +1,11 @@
-# Deploying CoverUP Web (GitHub Actions → DigitalOcean droplet)
+# Deploying WorkOnward Read Web (GitHub Actions → DigitalOcean droplet)
 
 Pushing to **`main`** (changes under `web/**`) builds the image, pushes it to
 GitHub Container Registry, and redeploys it on the droplet as a Docker
 container behind Caddy (automatic HTTPS).
 
 ```
-push main ──► GH Actions build ──► ghcr.io/rahvis/coverup-web ──► SSH droplet ──► docker compose up
+push main ──► GH Actions build ──► ghcr.io/rahvis/workonward-read-web ──► SSH droplet ──► docker compose up
                                                                          │
                                                         Caddy (TLS) ──► https://redact.gitdate.ink
 ```
@@ -45,7 +45,7 @@ ssh root@redact.gitdate.ink \
 ## Deploy
 
 ```bash
-git add web .github && git commit -m "Deploy CoverUP Web" && git push origin main
+git add web .github && git commit -m "Deploy WorkOnward Read Web" && git push origin main
 ```
 
 Watch it in the repo's **Actions** tab. When it's green:
@@ -54,7 +54,7 @@ Watch it in the repo's **Actions** tab. When it's green:
 https://redact.gitdate.ink
 ```
 
-Trigger a redeploy without a code change from **Actions → Deploy CoverUP Web →
+Trigger a redeploy without a code change from **Actions → Deploy WorkOnward Read Web →
 Run workflow**.
 
 ## Security notes
@@ -78,7 +78,7 @@ Images are tagged with the commit SHA. To pin a previous version on the droplet:
 
 ```bash
 ssh root@redact.gitdate.ink
-cd /opt/coverup
-COVERUP_IMAGE=ghcr.io/rahvis/coverup-web:<old-sha> \
+cd /opt/coverup   # deploy directory on the droplet (kept from the original setup)
+WORKONWARD_IMAGE=ghcr.io/rahvis/workonward-read-web:<old-sha> \
   docker compose -f docker-compose.prod.yml up -d
 ```

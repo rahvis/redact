@@ -1,6 +1,6 @@
-"""Tests for the typed annotation engine (coverup/annotations.py).
+"""Tests for the typed annotation engine (workonward_read/annotations.py).
 
-CoverUP is free software licensed under GPL-3.0.
+WorkOnward Read is free software licensed under GPL-3.0.
 (c) 2024 - 2026 Björn Seipel
 Acrobat-suite additions (c) 2026 CoverUP contributors
 """
@@ -16,8 +16,8 @@ from PIL import Image
 
 import fixtures  # noqa: F401  (path check; helpers synthesized inline)
 
-from coverup import annotations as an
-from coverup.annotations import (
+from workonward_read import annotations as an
+from workonward_read.annotations import (
     Annotation,
     UndoStack,
     estimate_bbox,
@@ -30,7 +30,7 @@ from coverup.annotations import (
     substitute_template,
     to_dict,
 )
-from coverup.utils import find_fonts_folder, get_package_dir
+from workonward_read.utils import find_fonts_folder, get_package_dir
 
 FONT_DIR = find_fonts_folder(get_package_dir())
 
@@ -526,7 +526,7 @@ def test_annotations_module_does_not_import_gui():
     import sys
     repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     code = (
-        "import sys; import coverup.annotations; "
+        "import sys; import workonward_read.annotations; "
         "bad = [m for m in sys.modules "
         "if 'FreeSimpleGUI' in m or m == 'tkinter' or m.startswith('tkinter.')]; "
         "sys.exit(1 if bad else 0)"

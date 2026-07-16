@@ -1,4 +1,4 @@
-name: Deploy CoverUP Web
+name: Deploy WorkOnward Read Web
 
 # Build the web app image and deploy it to the DigitalOcean droplet as a Docker
 # container whenever the web app (or this workflow) changes on main.
@@ -23,11 +23,11 @@ on:
   workflow_dispatch: {}   # allow manual "Run workflow"
 
 concurrency:
-  group: deploy-coverup-web
+  group: deploy-workonward-read-web
   cancel-in-progress: false
 
 env:
-  IMAGE_NAME: coverup-web
+  IMAGE_NAME: workonward-read-web
 
 jobs:
   build-and-push:
@@ -119,7 +119,7 @@ jobs:
             # 3. Pull the freshly built image and (re)start the stack.
             cd /opt/coverup
             echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
-            export COVERUP_IMAGE="${IMAGE}:latest"
+            export WORKONWARD_IMAGE="${IMAGE}:latest"
             export SITE_DOMAIN="${SITE_DOMAIN}"
             docker compose -f docker-compose.prod.yml pull
             docker compose -f docker-compose.prod.yml up -d --remove-orphans

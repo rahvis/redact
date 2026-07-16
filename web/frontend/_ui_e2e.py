@@ -1,4 +1,4 @@
-"""Real-browser end-to-end test of the CoverUP Web UI (Playwright).
+"""Real-browser end-to-end test of the WorkOnward Read Web UI (Playwright).
 
 Drives the actual React + pdf.js app: uploads a PDF, waits for it to render,
 drags a redaction bar over the secret, clicks Redact & Download, then proves the

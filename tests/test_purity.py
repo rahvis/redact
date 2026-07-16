@@ -26,7 +26,7 @@ import importlib
 import sys
 
 try:
-    importlib.import_module("coverup.{module}")
+    importlib.import_module("workonward_read.{module}")
 except ImportError:
     print("SKIP")
     raise SystemExit(0)
@@ -53,9 +53,9 @@ def test_business_module_is_gui_free(module):
     output = proc.stdout.strip()
 
     if output == 'SKIP':
-        pytest.skip(f'coverup.{module} does not exist yet')
+        pytest.skip(f'workonward_read.{module} does not exist yet')
 
     assert proc.returncode == 0, (
-        f'coverup.{module} purity check failed:\n{proc.stdout}\n{proc.stderr}'
+        f'workonward_read.{module} purity check failed:\n{proc.stdout}\n{proc.stderr}'
     )
     assert output.endswith('OK'), f'unexpected output: {proc.stdout}\n{proc.stderr}'

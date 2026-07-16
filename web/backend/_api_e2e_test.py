@@ -1,4 +1,4 @@
-"""End-to-end test against a RUNNING CoverUP Web container.
+"""End-to-end test against a RUNNING WorkOnward Read Web container.
 
 Builds a source PDF with known secret text, POSTs it to /api/redact with a
 redaction region, and proves through the real HTTP path that:

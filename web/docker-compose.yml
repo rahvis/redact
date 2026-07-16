@@ -1,10 +1,10 @@
 services:
-  coverup-web:
+  workonward-read-web:
     build:
       context: .
       dockerfile: Dockerfile
-    image: coverup-web
-    container_name: coverup-web
+    image: workonward-read-web
+    container_name: workonward-read-web
     ports:
       - "8090:8080"
     restart: unless-stopped

@@ -1,5 +1,5 @@
 """
-Secure PDF redaction engine for CoverUP Web.
+Secure PDF redaction engine for WorkOnward Read Web.
 
 Faithful, stateless port of the desktop CoverUP redaction model:
 
@@ -164,8 +164,8 @@ def _redact_locked(pdf_bytes, regions, dpi, jpeg_quality, scale, password) -> by
         grouped = _regions_by_page(regions, page_count)
 
         out = FPDF(unit="pt")
-        out.set_creator("CoverUP Web")
-        out.set_producer("CoverUP Web (pypdfium2 + Pillow + fpdf2)")
+        out.set_creator("WorkOnward Read Web")
+        out.set_producer("WorkOnward Read Web (pypdfium2 + Pillow + fpdf2)")
         # Do NOT copy the source document's metadata/title — start clean.
 
         for i in range(page_count):

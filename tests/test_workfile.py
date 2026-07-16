@@ -10,8 +10,8 @@ import os
 
 import fixtures
 
-from coverup.utils import encode_filepath
-from coverup.workfile import WorkfileManager
+from workonward_read.utils import encode_filepath
+from workonward_read.workfile import WorkfileManager
 
 
 class FakePage:

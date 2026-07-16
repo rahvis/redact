@@ -1,8 +1,9 @@
-name: coverup
-title: CoverUP PDF
+name: workonward-read
+title: WorkOnward Read
 summary: A simple tool for redacting PDFs and images
 description: |
-  CoverUP is a privacy-focused tool for redacting sensitive information in PDF
+  WorkOnward Read (based on CoverUP by Björn Seipel, GPL-3.0) is a
+  privacy-focused tool for redacting sensitive information in PDF
   documents and images. Users can import PDF documents, which are converted into
   images during the process. This conversion ensures that text cannot be copied
   or indexed without OCR, enhancing the security of your information.
@@ -16,17 +17,16 @@ description: |
   - Password-protected PDF support
   - Command-line file opening support
 
-adopt-info: coverup
+adopt-info: workonward-read
 license: GPL-3.0
 grade: stable
 confinement: strict
 base: core24
 
-contact: mailto:support@digidigital.de
-website: https://coverup.digidigital.de
-source-code: https://github.com/digidigital/CoverUP
-issues: https://github.com/digidigital/CoverUP/issues
-donation: https://buymeacoffee.com/digidigital
+contact: https://workonward.org
+website: https://workonward.org
+source-code: https://github.com/rahvis/redact
+issues: https://github.com/rahvis/redact/issues
 
 platforms:
   amd64:
@@ -39,9 +39,9 @@ plugs:
     private: true
 
 apps:
-  coverup:
+  workonward-read:
     command: bin/launcher
-    desktop: share/applications/coverup.desktop
+    desktop: share/applications/workonward-read.desktop
     environment:
       FONTCONFIG_PATH: $SNAP/fonts
       FONTCONFIG_FILE: $SNAP/fonts/fonts.conf
@@ -60,11 +60,10 @@ apps:
       - shmem
       
 parts:
-  coverup:
+  workonward-read:
     plugin: nil
-    source: https://github.com/digidigital/CoverUP.git
-    source-type: git
-    source-tag: "0.4.2"
+    # Built from the LOCAL source tree (this checkout), not the upstream repo.
+    source: .
 
 
     build-packages:
@@ -94,7 +93,7 @@ parts:
     override-build: |
       set -euo pipefail
 
-      craftctl set version="$(git describe --tags --abbrev=0 | sed 's/^v//')"
+      craftctl set version="$(sed -n 's/^__version__ *= *["'"'"']\([^"'"'"']*\)["'"'"'].*/\1/p' workonward_read/__init__.py)"
       craftctl default
 
       # Build Python app using PyInstaller
@@ -104,11 +103,11 @@ parts:
       "$VENV/bin/python" -m pip install "pyinstaller>=5.0.0"
       "$VENV/bin/python" -m pip install .
 
-      "$VENV/bin/python" -m PyInstaller --noconfirm --onedir --name coverup CoverUP.py
+      "$VENV/bin/python" -m PyInstaller --noconfirm --onedir --name workonward-read WorkOnwardRead.py
 
-      mkdir -p "$CRAFT_PART_INSTALL/coverup"
-      cp -r dist/coverup/* "$CRAFT_PART_INSTALL/coverup/"
-      chmod +x "$CRAFT_PART_INSTALL/coverup/coverup"
+      mkdir -p "$CRAFT_PART_INSTALL/workonward-read"
+      cp -r dist/workonward-read/* "$CRAFT_PART_INSTALL/workonward-read/"
+      chmod +x "$CRAFT_PART_INSTALL/workonward-read/workonward-read"
 
       # -------------------------------
       # FONTS + FONTCONFIG
@@ -119,7 +118,7 @@ parts:
         '<?xml version="1.0"?>' \
         '<!DOCTYPE fontconfig SYSTEM "fonts.dtd">' \
         '<fontconfig>' \
-        '  <dir>/snap/coverup/current/usr/share/fonts</dir>' \
+        '  <dir>/snap/workonward-read/current/usr/share/fonts</dir>' \
         '  <cachedir prefix="xdg">fontconfig</cachedir>' \
         '  <config>' \
         '    <rescan>' \
@@ -139,7 +138,7 @@ parts:
         'export FONTCONFIG_PATH="$SNAP/fonts"' \
         'export FONTCONFIG_FILE="$SNAP/fonts/fonts.conf"' \
         'export XDG_DATA_HOME="$SNAP/usr/share"' \
-        'exec "$SNAP/coverup/coverup" "$@"' \
+        'exec "$SNAP/workonward-read/workonward-read" "$@"' \
         > "$CRAFT_PART_INSTALL/bin/launcher"
 
       chmod +x "$CRAFT_PART_INSTALL/bin/launcher"
@@ -151,22 +150,22 @@ parts:
 
       printf '%s\n' \
         '[Desktop Entry]' \
-        'Name=CoverUP PDF' \
+        'Name=WorkOnward Read' \
         'GenericName=PDF Redaction Tool' \
         'Comment=Redact sensitive information in PDFs and images' \
-        'Exec=coverup %f' \
-        'Icon=${SNAP}/share/icons/coverup.svg' \
+        'Exec=workonward-read %f' \
+        'Icon=${SNAP}/share/icons/workonward-read.svg' \
         'Terminal=false' \
         'Type=Application' \
         'Categories=Office;Utility;Graphics;' \
         'MimeType=application/pdf;image/png;image/jpeg;' \
         'StartupNotify=true' \
         'Keywords=pdf;redact;privacy;censor;black;bar;' \
-        > "$CRAFT_PART_INSTALL/share/applications/coverup.desktop"
+        > "$CRAFT_PART_INSTALL/share/applications/workonward-read.desktop"
 
       mkdir -p "$CRAFT_PART_INSTALL/share/icons"
-      cp CoverUP.svg "$CRAFT_PART_INSTALL/share/icons/coverup.svg" || true
-      cp CoverUP.ico "$CRAFT_PART_INSTALL/share/icons/coverup.ico" || true
+      cp WorkOnwardRead.svg "$CRAFT_PART_INSTALL/share/icons/workonward-read.svg" || true
+      cp WorkOnwardRead.ico "$CRAFT_PART_INSTALL/share/icons/workonward-read.ico" || true
 
     override-prime: |
       craftctl default

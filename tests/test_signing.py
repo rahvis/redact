@@ -1,4 +1,4 @@
-"""Tests for coverup.signing (pyHanko-based signing and validation).
+"""Tests for workonward_read.signing (pyHanko-based signing and validation).
 
 All credentials are synthesized in-test with `cryptography` — no binary
 fixtures.
@@ -18,9 +18,9 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.hazmat.primitives.serialization import pkcs12
 from cryptography.x509.oid import NameOID
 
-from coverup import signing
+from workonward_read import signing
 
-TEST_CN = "CoverUP Test Signer"
+TEST_CN = "WorkOnward Read Test Signer"
 P12_PASSWORD = b"test-pass"
 
 
@@ -30,7 +30,7 @@ def _make_credentials(tmp_path, cn=TEST_CN, password=P12_PASSWORD):
     subject = x509.Name(
         [
             x509.NameAttribute(NameOID.COMMON_NAME, cn),
-            x509.NameAttribute(NameOID.ORGANIZATION_NAME, "CoverUP Tests"),
+            x509.NameAttribute(NameOID.ORGANIZATION_NAME, "WorkOnward Read Tests"),
         ]
     )
     now = datetime.now(timezone.utc)
@@ -61,7 +61,7 @@ def _make_credentials(tmp_path, cn=TEST_CN, password=P12_PASSWORD):
     )
 
     p12_bytes = pkcs12.serialize_key_and_certificates(
-        name=b"coverup-test",
+        name=b"workonward_read-test",
         key=key,
         cert=cert,
         cas=None,

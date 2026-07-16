@@ -7,8 +7,8 @@ Acrobat-suite additions (c) 2026 CoverUP contributors
 
 import time
 
-from coverup import menu, tasks
-from coverup.handlers import HANDLERS, TOOLBAR_HANDLERS
+from workonward_read import menu, tasks
+from workonward_read.handlers import HANDLERS, TOOLBAR_HANDLERS
 
 
 # Full key set from docs/dev-architecture.md (the binding contract).

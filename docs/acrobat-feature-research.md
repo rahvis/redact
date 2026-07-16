@@ -37,7 +37,7 @@ Status legend for CoverUP: ✅ implemented · ⚠️ partial (documented limitat
 | 27 | Protect | Open password (document encryption) | S | ✅ AES-256 |
 | 28 | Protect | Permission restrictions (print/copy/modify) | S | ✅ owner password + permission flags |
 | 29 | Protect | Remove security | S | ✅ with known password |
-| 30 | Protect | Redaction (permanent removal) | P | ✅ CoverUP's core feature (rasterize + burn-in) |
+| 30 | Protect | Redaction (permanent removal) | P | ✅ the app's core feature (rasterize + burn-in) |
 | 31 | Protect | Sanitize / remove hidden data | P | ✅ strips XMP/doc info/JavaScript/embedded files/OpenAction; raster export flattens everything else |
 | 32 | Protect | Certificate encryption | S | ⚠️ out of scope (recipient-certificate encryption not supported by the OSS stack); AES-256 password encryption covers protection |
 | 33 | Sign | Fill & Sign (type / draw / image signature) | R | ✅ canvas placement, burned in |
@@ -53,7 +53,7 @@ Status legend for CoverUP: ✅ implemented · ⚠️ partial (documented limitat
 | 43 | Prepress | Preflight (PDF/A, PDF/X, PDF/E, PDF/UA), output preview, ink manager | P | ❌ prepress niche |
 | 44 | Media | Embed video/audio | P | ❌ out of scope |
 | 45 | Measure | Measure distance/area | P | ✅ simple ruler tool (points → cm/in via page size) |
-| 46 | AI | AI Assistant (summarize / chat with PDF) | P add-on | ❌ requires a cloud LLM; CoverUP is offline by design |
+| 46 | AI | AI Assistant (summarize / chat with PDF) | P add-on | ❌ requires a cloud LLM; the app is offline by design |
 | 47 | Cloud | PDF Spaces / cloud storage / mobile sync | P | ❌ SaaS |
 
 **Net:** 31 features shipped (4 pre-existing), 6 partial with documented limitations,

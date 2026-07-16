@@ -3,5 +3,5 @@
 # 80/443 to be reachable) and reverse-proxies to the app container.
 {$SITE_DOMAIN:redact.gitdate.ink} {
 	encode gzip
-	reverse_proxy coverup-web:8080
+	reverse_proxy workonward-read-web:8080
 }

@@ -1,4 +1,4 @@
-"""Synthesized test fixtures for the CoverUP test suite.
+"""Synthesized test fixtures for the WorkOnward Read test suite.
 
 All fixtures are generated at test time with fpdf2 / Pillow / pypdf —
 no binary files are committed to the repository.

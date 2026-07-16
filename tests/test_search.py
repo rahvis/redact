@@ -1,5 +1,5 @@
 """
-Tests for coverup.search.
+Tests for workonward_read.search.
 
 License: GPL-3.0
 (c) 2024 - 2026 Björn Seipel
@@ -9,7 +9,7 @@ Acrobat-suite additions (c) 2026 CoverUP contributors
 import pytest
 
 import fixtures
-from coverup.search import Hit, search_document
+from workonward_read.search import Hit, search_document
 
 PT_TO_PX = 200 / 72.0
 # fixtures.make_pdf default page size (A4 portrait, pt)

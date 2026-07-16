@@ -7,7 +7,7 @@ Acrobat-suite additions (c) 2026 CoverUP contributors
 
 import importlib
 
-from coverup import menu
+from workonward_read import menu
 
 
 def test_menu_spec_builds():
@@ -56,7 +56,7 @@ def _layout_keys(layout):
 
 
 def test_create_layout_returns_list_with_expected_elements():
-    from coverup import ui
+    from workonward_read import ui
 
     icons = ui.create_icons(ui.get_fontpath())
     layout = ui.create_layout(icons)
@@ -77,7 +77,7 @@ def test_create_layout_returns_list_with_expected_elements():
 
 
 def test_tool_selector_offers_all_tool_keys():
-    from coverup import ui
+    from workonward_read import ui
 
     assert ui.TOOL_KEYS == [
         'redact', 'eraser', 'text', 'highlight', 'underline', 'strike', 'ink',
@@ -87,7 +87,7 @@ def test_tool_selector_offers_all_tool_keys():
 
 
 def test_registered_tools_are_a_subset_of_the_selector():
-    from coverup import canvas_tools, ui
+    from workonward_read import canvas_tools, ui
 
     assert set(canvas_tools.TOOLS) <= set(ui.TOOL_KEYS)
     assert 'redact' in canvas_tools.TOOLS
@@ -100,5 +100,5 @@ def test_registered_tools_are_a_subset_of_the_selector():
 
 
 def test_import_main_succeeds():
-    module = importlib.import_module('coverup.main')
+    module = importlib.import_module('workonward_read.main')
     assert callable(module.main)

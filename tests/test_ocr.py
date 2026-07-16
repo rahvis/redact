@@ -1,5 +1,5 @@
 """
-Tests for coverup.ocr — Tesseract OCR producing searchable PDFs.
+Tests for workonward_read.ocr — Tesseract OCR producing searchable PDFs.
 
 OCR tests are skipped when no tesseract binary is installed; the input
 validation tests run everywhere.
@@ -18,7 +18,7 @@ from PIL import Image, ImageDraw, ImageFont
 from pypdf import PdfReader, PdfWriter
 
 import fixtures  # noqa: F401 (path added by conftest)
-from coverup import ocr
+from workonward_read import ocr
 
 TESSERACT = ocr.find_tesseract()
 needs_tesseract = pytest.mark.skipif(

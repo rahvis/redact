@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Generate packaging/macos/CoverUP.icns from the repo's CoverUP.svg.
+# Generate packaging/macos/WorkOnwardRead.icns from the repo's WorkOnwardRead.svg.
 #
 # Requirements:
 #   - rsvg-convert  (brew install librsvg)
@@ -8,14 +8,14 @@
 # Usage: bash packaging/macos/make_icns.sh
 #
 # The .icns is committed to the repo so CI runners do not need librsvg.
-# Re-run this script whenever CoverUP.svg changes.
+# Re-run this script whenever WorkOnwardRead.svg changes.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
-SVG="${REPO_ROOT}/CoverUP.svg"
-OUT_ICNS="${SCRIPT_DIR}/CoverUP.icns"
+SVG="${REPO_ROOT}/WorkOnwardRead.svg"
+OUT_ICNS="${SCRIPT_DIR}/WorkOnwardRead.icns"
 
 command -v rsvg-convert >/dev/null 2>&1 || {
     echo "ERROR: rsvg-convert not found. Install it with: brew install librsvg" >&2
@@ -27,7 +27,7 @@ command -v iconutil >/dev/null 2>&1 || {
 }
 [ -f "$SVG" ] || { echo "ERROR: SVG not found: $SVG" >&2; exit 1; }
 
-ICONSET="$(mktemp -d)/CoverUP.iconset"
+ICONSET="$(mktemp -d)/WorkOnwardRead.iconset"
 mkdir -p "$ICONSET"
 trap 'rm -rf "$(dirname "$ICONSET")"' EXIT
 

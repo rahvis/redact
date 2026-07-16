@@ -347,7 +347,7 @@ if __name__ == '__main__':
 
 ## Flatpak Impact
 
-Once FreeSimpleGUI is patched, the CoverUP Flatpak can be updated to use:
+Once FreeSimpleGUI is patched, the WorkOnward Read Flatpak (flatpak/org.workonward.read.yml) can be updated to use:
 - GNOME Platform 49 (runtime-version: '49')
 - Python 3.13
 - Tcl/Tk 9.0 via tkinter-standalone (commit: 8e78e38ef0cceb44a3a0062e1c314a4ff3f981db)
