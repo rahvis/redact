@@ -15,9 +15,49 @@ import pypdfium2 as pdfium
 from PIL import Image
 
 from workonward_read import annotations as annotations_engine
+from workonward_read import page_render
 from workonward_read.image_container import ImageContainer
+from workonward_read.pdf_ops import PageOpsJournal
 from workonward_read.utils import is_valid_file_type, get_worker_count
 from workonward_read.i18n import _
+
+
+def restored_session_matches(work_data, original_page_count):
+    """True when a saved work session fits the freshly loaded document.
+
+    The workfile's ``pages`` value is the page count AFTER the saved journal
+    was applied (it mirrors ``state.images`` at save time), so it must be
+    compared against the POST-journal page count of the original document —
+    computed here by replaying the journal on a page-count level only.
+    """
+    if not work_data:
+        return False
+    try:
+        journal = PageOpsJournal.from_dict(
+            {'ops': work_data.get('journal') or []})
+        return work_data.get('pages') == journal.page_count_after(
+            original_page_count)
+    except Exception:
+        return False
+
+
+def apply_restored_session(images_list, work_data):
+    """Attach a restored work session to freshly rendered ORIGINAL pages.
+
+    The restored journal is replayed on ``images_list`` (mutated in place)
+    FIRST — the restored annotations were captured AFTER the page ops, so
+    their coordinates only fit the post-op pages. Only then are the
+    annotations attached, per post-op page.
+    """
+    journal_ops = work_data.get('journal') or []
+    if journal_ops:
+        journal = PageOpsJournal.from_dict({'ops': journal_ops})
+        journal.apply_to_images(images_list, page_render.JOURNAL_CALLBACKS)
+    for page_annotations, page in zip(work_data['annotations'], images_list):
+        page.annotations = [
+            annotations_engine.from_dict(entry)
+            for entry in page_annotations
+        ]
 
 
 def _render_pdf_page(args):
@@ -281,7 +321,8 @@ def load_document(load_file_path, import_ppi, window, workfile_manager, show_res
 
     # Check for previous work session
     work_data = workfile_manager.load()
-    if show_restore_prompt and work_data and work_data['pages'] == len(images_list):
+    if show_restore_prompt and restored_session_matches(work_data,
+                                                        len(images_list)):
         win_loc_x, win_loc_y = window.current_location()
         win_w, win_h = window.current_size_accurate()
         result = sg.popup_ok_cancel(
@@ -294,16 +335,15 @@ def load_document(load_file_path, import_ppi, window, workfile_manager, show_res
         )
         try:
             if result == 'OK':
-                for page_annotations, page in zip(work_data['annotations'], images_list):
-                    page.annotations = [
-                        annotations_engine.from_dict(entry)
-                        for entry in page_annotations
-                    ]
+                # Replays the journal on the original render, THEN attaches
+                # the (post-op) annotations.
+                apply_restored_session(images_list, work_data)
                 loaded_page = int(work_data['current_page'])
                 new_fill_color = work_data['fill_color']
                 new_output_quality = work_data['output_quality']
                 extras['decorations'] = work_data.get('decorations') or {}
                 extras['journal'] = work_data.get('journal') or []
+                extras['restored'] = True
             else:
                 workfile_manager.delete()
         except Exception:

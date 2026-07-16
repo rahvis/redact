@@ -34,17 +34,37 @@ from workonward_read.i18n import _
 # Journal-consistent single-op apply
 # ---------------------------------------------------------------------------
 
-# Page factories used when replaying insert ops on the in-memory images.
-JOURNAL_CALLBACKS = {
-    'make_blank': page_render.make_blank,
-    'render_pdf_pages': page_render.render_pdf_pages,
-}
+# Page factories used when replaying insert ops on the in-memory images
+# (defined in page_render so document_loader can share them without cycles).
+JOURNAL_CALLBACKS = page_render.JOURNAL_CALLBACKS
+
+
+def _remap_undo_stacks(undo, single_op_journal, page_count_before):
+    """Remap the per-page undo stacks in ``undo`` through one page op.
+
+    Deleted pages lose their stacks, move/insert ops shift the page indices,
+    and rotated/cropped pages have their stacks CLEARED — their snapshots
+    hold pre-transform coordinates that no longer match the page bitmap.
+    """
+    if not undo:
+        return {}
+    remapped = {}
+    for new_idx, slot in enumerate(
+            single_op_journal.simulate_pages(page_count_before)):
+        original = slot['original']
+        if original is None or slot['ops']:
+            continue
+        stack = undo.get(original)
+        if stack is not None:
+            remapped[new_idx] = stack
+    return remapped
 
 
 def record_and_apply(state, op):
     """Record ``op`` into ``state.journal`` (created on demand) and apply it
     to ``state.images`` via the same journal replay code, keeping the two
-    worlds consistent. ``state.current_page`` is clamped afterwards."""
+    worlds consistent. ``state.undo`` is remapped through the op and
+    ``state.current_page`` is clamped afterwards."""
     if state.journal is None:
         state.journal = pdf_ops.PageOpsJournal()
     state.journal.record(op)
@@ -52,7 +72,9 @@ def record_and_apply(state, op):
     recorded = state.journal.ops[-1]
     single = pdf_ops.PageOpsJournal()
     single.record(recorded)
+    pages_before = len(state.images)
     single.apply_to_images(state.images, JOURNAL_CALLBACKS)
+    state.undo = _remap_undo_stacks(state.undo, single, pages_before)
     if state.images:
         state.current_page = max(0, min(state.current_page, len(state.images) - 1))
     else:

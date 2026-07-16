@@ -36,13 +36,14 @@ import os
 
 import FreeSimpleGUI as sg
 
+from workonward_read import geometry
 from workonward_read.compare import compare_pdfs, export_diff_report, text_diff
 from workonward_read.dialogs import review as review_dialogs
 from workonward_read.dialogs.common import error_popup, info_popup
 from workonward_read.handlers.view import flip_to_page
 from workonward_read.image_container import ImageContainer
 from workonward_read.i18n import _
-from workonward_read.search import search_document
+from workonward_read.search import page_count, search_document
 from workonward_read.tasks import run_task
 
 
@@ -86,6 +87,46 @@ def perform_search(state, term, match_case=False, progress_cb=None):
 def format_hit(hit):
     """Render one hit as a listbox line: ``p.N: …context…`` (1-based page)."""
     return f'p.{hit.page_index + 1}: {hit.context}'
+
+
+def remap_hit_location(hit, journal, original_page_count):
+    """Map a search hit (ORIGINAL-document coordinates) through the page-ops
+    journal onto the current in-memory document.
+
+    Search always runs on the original PDF file, so both the hit's page
+    index and its rectangles must be remapped when pages were deleted,
+    moved, inserted, rotated or cropped.
+
+    Args:
+        hit: A :class:`workonward_read.search.Hit`.
+        journal: ``state.journal`` (a PageOpsJournal) or None.
+        original_page_count: Page count of the original PDF file.
+
+    Returns:
+        ``(current_page_index, rects_px)`` — ``current_page_index`` is None
+        when the hit's page was deleted (the hit cannot be navigated to);
+        ``rects_px`` may be empty when every matched rectangle was cropped
+        away or the page size is unknown (the page is still shown, just
+        without outlines).
+    """
+    if journal is None or journal.is_empty():
+        return hit.page_index, [list(rect) for rect in hit.rects_px]
+    current = journal.map_original_index(hit.page_index, original_page_count)
+    if current is None:
+        return None, []
+    ops = journal.transform_ops_for_original(hit.page_index,
+                                             original_page_count)
+    if not ops:
+        return current, [list(rect) for rect in hit.rects_px]
+    size = list(getattr(hit, 'page_size_px', None) or [])
+    if len(size) != 2:
+        return current, []
+    rects = []
+    for rect in hit.rects_px:
+        transformed = geometry.transform_rect(rect, ops, size[0], size[1])
+        if transformed is not None:
+            rects.append(transformed)
+    return current, rects
 
 
 def hit_rect_to_graph(rect_px, zoom_factor):
@@ -226,30 +267,45 @@ def search(window, state):
 
     finder = review_dialogs.open_search_window(window)
     hits = []
+    locations = []   # per hit: (current_page_index or None, remapped rects)
     temp_ids = []
     selected = -1
     searching = False
 
     def show_hit(index):
-        """Select hit ``index``: flip page, outline rects at current zoom."""
+        """Select hit ``index``: flip page, outline rects at current zoom.
+
+        Hits are remapped through ``state.journal`` (search runs on the
+        original file): hits on deleted pages are only marked, cropped-away
+        match areas show the page without outlines plus a status note.
+        """
         nonlocal selected, temp_ids
         if not hits:
             return
         index = max(0, min(int(index), len(hits) - 1))
         selected = index
         hit = hits[index]
+        current, rects = (locations[index] if index < len(locations)
+                          else (hit.page_index, hit.rects_px))
         try:
             finder['-RESULTS-'].update(set_to_index=[index],
                                        scroll_to_index=index)
         except Exception:
             pass
-        finder['-COUNT-'].update(f'{index + 1} / {len(hits)}')
+        counter = f'{index + 1} / {len(hits)}'
         # flip_to_page redraws the graph (erasing old temp figures too), the
         # explicit clear keeps the bookkeeping exact when the page is unchanged.
         temp_ids = clear_temp_figures(window, temp_ids)
+        if current is None:
+            # The page was deleted by a page op: skip navigation.
+            finder['-COUNT-'].update(counter + ' ' + _('(page removed)'))
+            return
+        if hit.rects_px and not rects:
+            counter += ' ' + _('(match area cropped)')
+        finder['-COUNT-'].update(counter)
         state.current_page = flip_to_page(window, state.images,
-                                          hit.page_index, state)
-        temp_ids = draw_hit_outlines(window, hit.rects_px,
+                                          current, state)
+        temp_ids = draw_hit_outlines(window, rects,
                                      ImageContainer.zoom_factor)
 
     while True:
@@ -276,9 +332,30 @@ def search(window, state):
                 error_popup(finder, _('error_occurred'), payload)
             elif event[1] == 'DONE':
                 hits = payload or []
+                locations = []
+                if hits:
+                    if state.journal is None or state.journal.is_empty():
+                        locations = [(hit.page_index,
+                                      [list(r) for r in hit.rects_px])
+                                     for hit in hits]
+                    else:
+                        try:
+                            total = page_count(
+                                state.file_path,
+                                getattr(state, 'source_password', None))
+                        except Exception:
+                            total = max(hit.page_index for hit in hits) + 1
+                        locations = [
+                            remap_hit_location(hit, state.journal, total)
+                            for hit in hits]
                 temp_ids = clear_temp_figures(window, temp_ids)
-                finder['-RESULTS-'].update(
-                    values=[format_hit(hit) for hit in hits])
+                lines = []
+                for hit, (current, _rects) in zip(hits, locations):
+                    line = format_hit(hit)
+                    if current is None:
+                        line += ' ' + _('(page removed)')
+                    lines.append(line)
+                finder['-RESULTS-'].update(values=lines)
                 if hits:
                     show_hit(0)
                 else:

@@ -34,11 +34,16 @@ class Hit:
         rects_px: Bounding rectangles ``[x0, y0, x1, y1]`` of the matched
             characters in 200-PPI image pixel space, y-down. A match that
             wraps across lines produces multiple rectangles.
+        page_size_px: ``[width, height]`` of the page in the same pixel
+            space — needed to remap ``rects_px`` through page rotations and
+            crops (see ``handlers.review.remap_hit_location``). Empty when
+            unknown (e.g. hand-built hits in tests).
     """
 
     page_index: int
     context: str
     rects_px: list = field(default_factory=list)
+    page_size_px: list = field(default_factory=list)
 
 
 def _open_pdf(pdf_path, password=None):
@@ -54,6 +59,20 @@ def _open_pdf(pdf_path, password=None):
                 "The PDF is encrypted and requires a valid password."
             ) from exc
         raise
+
+
+def page_count(pdf_path, password=None):
+    """Return the number of pages in the PDF at ``pdf_path``.
+
+    Raises:
+        ValueError: If the PDF is encrypted and the password is missing or
+            wrong.
+    """
+    pdf = _open_pdf(pdf_path, password)
+    try:
+        return len(pdf)
+    finally:
+        pdf.close()
 
 
 def search_document(pdf_path, term, password=None, match_case=False,
@@ -89,7 +108,8 @@ def search_document(pdf_path, term, password=None, match_case=False,
             textpage = None
             searcher = None
             try:
-                _, page_h_pt = page.get_size()
+                page_w_pt, page_h_pt = page.get_size()
+                page_size_px = [page_w_pt * _PT_TO_PX, page_h_pt * _PT_TO_PX]
                 textpage = page.get_textpage()
                 full_text = textpage.get_text_range()
                 searcher = textpage.search(term, match_case=match_case)
@@ -118,7 +138,8 @@ def search_document(pdf_path, term, password=None, match_case=False,
                     context = " ".join(full_text[start:end].split())
 
                     hits.append(Hit(page_index=page_index, context=context,
-                                    rects_px=rects_px))
+                                    rects_px=rects_px,
+                                    page_size_px=list(page_size_px)))
             finally:
                 if searcher is not None:
                     searcher.close()

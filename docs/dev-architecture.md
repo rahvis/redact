@@ -6,7 +6,7 @@ conform; integration relies on these exact shapes. Python: `.venv/bin/python` (3
 ## Layering rule (enforced by tests/test_purity.py)
 
 Business modules — `pdf_ops`, `annotations`, `convert`, `ocr`, `signing`, `forms`,
-`compare`, `search` — never import FreeSimpleGUI or tkinter. GUI modules (`main`, `ui`,
+`compare`, `search`, `geometry` — never import FreeSimpleGUI or tkinter. GUI modules (`main`, `ui`,
 `menu`, `dialogs/*`, `handlers/*`, `canvas_tools`, `thumbnails`, `tasks`, `state`) may
 import business modules. All user-visible strings live in GUI modules via `i18n._()`;
 business modules raise exceptions with plain-English messages and return data.
@@ -17,6 +17,36 @@ Canvas/annotation coordinates are in ORIGINAL-image pixel space at 200 PPI
 (`import_ppi = 200`), y-down, exactly like the existing rectangle model.
 Conversions: `px = pt * 200/72`, `pt = px * 72/200`. PDF y-axis is flipped
 (`y_pt = page_height_pt - y_px * 72/200`).
+
+LEGACY container size convention: `ImageContainer.size` keeps the order the
+loader handed in — pdfium's `page.get_size()` = `(width_pt, height_pt)` — so
+`size[0]` is the page WIDTH in pt and is stored in `height_in_pt`, while
+`size[1]` (the HEIGHT) lives in `width_in_pt`. The attribute names are
+historic; the export path relies on the convention
+(`handlers/file.py: add_page(format=(height_in_pt, width_in_pt))`). Every
+code path that resizes a page (rotate/crop in `pdf_ops.apply_to_images`)
+must preserve it.
+
+## Geometry (`workonward_read/geometry.py`)
+
+Pure pixel-space transform helpers (business module):
+
+```python
+rotate_point_cw(pt, degrees, old_w, old_h) -> [x, y]   # CW, pixel-index conv.
+translate_point(pt, dx, dy) -> [x, y]
+transform_annotation(ann_or_dict, op) -> ann | None    # mutates geometry props
+transform_annotations(list, op) -> list                # drops removed anns
+transform_rect(rect, ops, page_w, page_h) -> rect | None
+```
+
+`op` is `('rotate', degrees, old_w, old_h)` or `('crop', (x0, y0, x1, y1))`.
+`transform_annotation` covers every kind's geometry props: `p1`/`p2`
+(boxed kinds re-normalized; line/arrow keep direction), `pos`, `points`,
+and rotation adjusts the stamp `angle`. Crops drop annotations fully outside
+the box, clamp partially-outside boxed kinds, and NEVER shrink a `redact`
+below its intersection with the new page (coverage is preserved).
+`transform_rect` consumes the per-page op lists produced by
+`PageOpsJournal.transform_ops_for_original` (used for search-hit remapping).
 
 ## AppState (`workonward_read/state.py`)
 
@@ -132,6 +162,16 @@ Templates substitute `{page} {total} {date} {bates}`. Fonts: DejaVuSans[-Bold].t
 v1 files (`"rectangles"` key) migrate via `annotations.migrate_v1_rectangle`.
 Passwords are never persisted.
 
+`pages` and the per-page `annotations` lists describe the document AFTER the
+saved `journal` was applied (they mirror `state.images` at save time), and
+annotation coordinates are post-op. Restore therefore (a) accepts a session
+when `pages == journal.page_count_after(original_page_count)`
+(`document_loader.restored_session_matches`) and (b) replays the journal on
+the freshly rendered original pages BEFORE attaching the restored
+annotations (`document_loader.apply_restored_session`). `handlers/file.py`
+then seeds each restored page's UndoStack with one empty-state snapshot so a
+single Undo removes the restored set and Redo brings it back.
+
 ## PageOpsJournal (`workonward_read/pdf_ops.py`)
 
 Ops (indices refer to state at time of op): `('delete', [idx...])`, `('move', src, dst)`,
@@ -140,6 +180,21 @@ Ops (indices refer to state at time of op): `('delete', [idx...])`, `('move', sr
 `record(op)`, `apply_to_images(images, render_pages_fn)`, `apply_to_pdf(reader_pages) ->
 list of (source, transform)` consumed by `apply_journal(input, journal, output, password)`.
 `to_dict()/from_dict()` for the workfile.
+
+`apply_to_images` also remaps each affected container's `annotations`
+through rotate/crop ops (via `geometry.transform_annotations`) and keeps the
+legacy container size convention (`size[0]` = WIDTH in pt, stored in
+`height_in_pt`). The insert-op page factories live in
+`page_render.JOURNAL_CALLBACKS` (re-exported by `handlers.organize`).
+
+Page-identity helpers (no images touched):
+`simulate_pages(original_count) -> [{'original': idx|None, 'ops': [...]}]`,
+`page_count_after(original_count)`, `map_original_index(idx, original_count)
+-> current|None`, `transform_ops_for_original(idx, original_count) ->
+[('rotate', deg) | ('crop', box)] | None` — used by the restore guard, by
+undo-stack remapping in `handlers.organize.record_and_apply`, and by
+search-hit remapping (`handlers.review.remap_hit_location`, which feeds
+`geometry.transform_rect` with `search.Hit.page_size_px`).
 
 ## Background tasks (`workonward_read/tasks.py`)
 

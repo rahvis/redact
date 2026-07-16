@@ -30,6 +30,8 @@ from pypdf import PageObject, PdfReader, PdfWriter
 from pypdf.constants import UserAccessPermissions
 from pypdf.generic import RectangleObject
 
+from workonward_read import geometry
+
 # Application-wide import resolution (see docs/dev-architecture.md).
 IMPORT_PPI = 200
 PT_PER_PX = 72.0 / IMPORT_PPI
@@ -112,12 +114,25 @@ def _replace_container_image(container, new_image):
             pass
 
 
-def _set_container_size(container, width_pt, height_pt):
-    container.width_in_pt = width_pt
-    container.height_in_pt = height_pt
+def _set_container_size(container, size0_pt, size1_pt):
+    """Store a page size using the LEGACY inverted container convention.
+
+    ``size[0]`` is the page WIDTH in points and lives in ``height_in_pt``;
+    ``size[1]`` is the page HEIGHT and lives in ``width_in_pt`` — mirroring
+    ``ImageContainer.__init__`` and the export path, which hands FPDF
+    ``format=(height_in_pt, width_in_pt)`` (see docs/dev-architecture.md).
+    """
+    container.height_in_pt = size0_pt
+    container.width_in_pt = size1_pt
     if hasattr(container, "size"):
-        # ImageContainer stores size as (height_pt, width_pt).
-        container.size = (height_pt, width_pt)
+        container.size = (size0_pt, size1_pt)
+
+
+def _transform_container_annotations(container, op):
+    """Remap `container.annotations` (if any) through a geometry op."""
+    annotations = getattr(container, "annotations", None)
+    if annotations:
+        container.annotations = geometry.transform_annotations(annotations, op)
 
 
 # ---------------------------------------------------------------------------
@@ -574,6 +589,71 @@ class PageOpsJournal:
         ops = data.get("ops", []) if isinstance(data, dict) else data
         return cls(ops)
 
+    # -- page-identity simulation (no images) --------------------------------
+
+    def simulate_pages(self, original_count):
+        """Replay the journal on a page-identity level (no images touched).
+
+        Args:
+            original_count: Page count of the ORIGINAL document the journal
+                replays from.
+
+        Returns:
+            One dict per CURRENT page, in current order:
+            ``{'original': original_index_or_None, 'ops': [(kind, arg), ...]}``
+            where ``original`` is None for pages created by insert ops and
+            ``ops`` is the page's cumulative geometry-transform list in replay
+            order — ``('rotate', degrees)`` and ``('crop', [x0, y0, x1, y1])``
+            entries consumable by :func:`workonward_read.geometry.transform_rect`.
+
+        Raises:
+            IndexError/ValueError: When the journal does not fit a document
+            of ``original_count`` pages.
+        """
+        pages = [{"original": i, "ops": []} for i in range(int(original_count))]
+        for op in self._ops:
+            kind = op[0]
+            if kind == "delete":
+                for idx in sorted(op[1], reverse=True):
+                    if not 0 <= idx < len(pages):
+                        raise IndexError(f"delete index {idx} out of range")
+                    pages.pop(idx)
+            elif kind == "move":
+                pages.insert(op[2], pages.pop(op[1]))
+            elif kind == "rotate":
+                for idx, degrees in op[1].items():
+                    pages[idx]["ops"].append(("rotate", degrees))
+            elif kind == "insert_blank":
+                pages.insert(op[1], {"original": None, "ops": []})
+            elif kind == "insert_pdf":
+                pages[op[1]:op[1]] = [
+                    {"original": None, "ops": []} for _ in op[3]]
+            elif kind == "crop":
+                pages[op[1]]["ops"].append(("crop", list(op[2])))
+        return pages
+
+    def page_count_after(self, original_count):
+        """Page count after replaying the journal on `original_count` pages."""
+        return len(self.simulate_pages(original_count))
+
+    def map_original_index(self, original_index, original_count):
+        """Current index of ORIGINAL page `original_index`, or None if deleted."""
+        for current, page in enumerate(self.simulate_pages(original_count)):
+            if page["original"] == original_index:
+                return current
+        return None
+
+    def transform_ops_for_original(self, original_index, original_count):
+        """Cumulative geometry ops applied to ORIGINAL page `original_index`.
+
+        Returns a list of ``('rotate', degrees)`` / ``('crop', box)`` entries
+        (possibly empty), or None when the page was deleted.
+        """
+        for page in self.simulate_pages(original_count):
+            if page["original"] == original_index:
+                return list(page["ops"])
+        return None
+
     # -- replay on images ----------------------------------------------------
 
     def apply_to_images(self, images, callbacks=None):
@@ -612,11 +692,16 @@ class PageOpsJournal:
             elif kind == "rotate":
                 for idx, degrees in op[1].items():
                     container = images[idx]
+                    old_w, old_h = container.image.size
+                    _transform_container_annotations(
+                        container, ("rotate", degrees, old_w, old_h))
                     new_image = container.image.transpose(_CW_TRANSPOSE[degrees])
                     _replace_container_image(container, new_image)
                     if degrees in (90, 270):
+                        # Swap point sizes; the legacy convention keeps the
+                        # WIDTH in height_in_pt (see _set_container_size).
                         _set_container_size(
-                            container, container.height_in_pt, container.width_in_pt)
+                            container, container.width_in_pt, container.height_in_pt)
             elif kind == "insert_blank":
                 make_blank = callbacks.get("make_blank")
                 if not callable(make_blank):
@@ -632,10 +717,14 @@ class PageOpsJournal:
                 images[op[1]:op[1]] = new_pages
             elif kind == "crop":
                 container = images[op[1]]
-                x0, y0, x1, y1 = op[2]
-                new_image = container.image.crop(
-                    (int(round(x0)), int(round(y0)), int(round(x1)), int(round(y1))))
+                x0, y0, x1, y1 = (int(round(v)) for v in op[2])
+                # Annotations translate by the same rounded box the bitmap is
+                # cropped with, so pixels and annotation coords stay aligned.
+                _transform_container_annotations(
+                    container, ("crop", (x0, y0, x1, y1)))
+                new_image = container.image.crop((x0, y0, x1, y1))
                 _replace_container_image(container, new_image)
+                # Legacy convention: size[0] = WIDTH in pt (height_in_pt).
                 _set_container_size(
                     container, (x1 - x0) * PT_PER_PX, (y1 - y0) * PT_PER_PX)
 

@@ -18,6 +18,7 @@ import fixtures
 from pypdf import PdfReader
 
 from workonward_read import page_render, pdf_ops
+from workonward_read.annotations import UndoStack
 from workonward_read.dialogs.organize import (PAGE_SIZES_PT, margins_to_box,
                                               parse_split_ranges,
                                               validate_compress_request)
@@ -220,6 +221,70 @@ def test_crop_all_pages_validates_before_recording(tmp_path):
     for container in state.images:
         assert container.image.width == pytest.approx(
             (300 - 36) * PX_PER_PT, abs=3)
+
+
+# ---------------------------------------------------------------------------
+# Undo-stack remapping through page ops (state.undo keyed by page index)
+# ---------------------------------------------------------------------------
+
+def _seeded_stacks(state, *indices):
+    """Give the pages at ``indices`` a distinguishable UndoStack each."""
+    stacks = {}
+    for idx in indices:
+        stack = UndoStack()
+        stack.push([])
+        state.undo[idx] = stacks[idx] = stack
+    return stacks
+
+
+def test_undo_stacks_shift_down_on_delete(tmp_path):
+    state = load_state(tmp_path, pages=3)
+    stacks = _seeded_stacks(state, 0, 1)
+
+    org.delete_pages_core(state, {'scope': 'ranges', 'spec': '1'})  # page 0
+
+    # page 0's stack is gone; old page 1's stack now serves new page 0
+    assert set(state.undo) == {0}
+    assert state.undo[0] is stacks[1]
+
+
+def test_undo_stacks_cleared_on_rotate_and_crop(tmp_path):
+    state = load_state(tmp_path, pages=2)
+    stacks = _seeded_stacks(state, 0, 1)
+
+    state.current_page = 0
+    org.rotate_pages_core(state, {'degrees': 90, 'scope': 'current'})
+    # rotated page's snapshots hold pre-transform coords -> cleared
+    assert set(state.undo) == {1}
+    assert state.undo[1] is stacks[1]
+
+    state.current_page = 1
+    org.crop_pages_core(state, {'scope': 'current', 'unit': 'px',
+                                'margins': (10, 10, 10, 10)})
+    assert state.undo == {}
+
+
+def test_undo_stacks_reorder_on_move(tmp_path):
+    state = load_state(tmp_path, pages=3)
+    stacks = _seeded_stacks(state, 0, 1, 2)
+
+    org.reorder_pages_core(state, {'src': 1, 'dst': 3})  # page 0 -> position 2
+
+    assert state.undo[2] is stacks[0]
+    assert state.undo[0] is stacks[1]
+    assert state.undo[1] is stacks[2]
+
+
+def test_undo_stacks_shift_up_on_insert(tmp_path):
+    state = load_state(tmp_path, pages=2)
+    stacks = _seeded_stacks(state, 0, 1)
+
+    org.insert_pages_core(state, {'mode': 'blank', 'position': 0,
+                                  'size': 'A4'})
+
+    assert set(state.undo) == {1, 2}
+    assert state.undo[1] is stacks[0]
+    assert state.undo[2] is stacks[1]
 
 
 # ---------------------------------------------------------------------------

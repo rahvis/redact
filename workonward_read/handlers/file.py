@@ -21,6 +21,7 @@ import FreeSimpleGUI as sg
 from fpdf import FPDF
 
 from workonward_read import __version__, ui
+from workonward_read.annotations import UndoStack
 from workonward_read.document_loader import load_document
 from workonward_read.image_container import ImageContainer, close_all_pages, finalize_pages_chunked
 from workonward_read.handlers.view import flip_to_page
@@ -85,6 +86,19 @@ def load_path(window, state, load_file_path, error_key='error_loading'):
         state.journal = (PageOpsJournal.from_dict({'ops': journal_ops})
                          if journal_ops else None)
         state.undo = {}
+        if extras.get('restored'):
+            # Restored annotations arrive outside the normal canvas-tool flow
+            # (which pushes an undo snapshot before every change). Seed each
+            # restored page's stack with ONE snapshot of the empty
+            # pre-restore state; the restored annotations stay the live
+            # state, so a single Undo removes the whole restored set and
+            # Redo brings it back — the closest safe parity with the classic
+            # pop-last behavior.
+            for page_idx, container in enumerate(state.images):
+                if getattr(container, 'annotations', None):
+                    stack = UndoStack()
+                    stack.push([])
+                    state.undo[page_idx] = stack
 
         # Apply restored settings if available
         if new_fill_color and state.fill_color != new_fill_color:

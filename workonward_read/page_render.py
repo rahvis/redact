@@ -137,3 +137,13 @@ def render_pdf_pages(path, indices, password=None):
         except Exception:
             pass
     return containers
+
+
+# Page factories consumed by PageOpsJournal.apply_to_images when replaying
+# insert ops on the in-memory images. Shared by handlers.organize (live page
+# ops) and document_loader (work-session restore) — kept here so importing it
+# never pulls in the handlers package (avoids import cycles).
+JOURNAL_CALLBACKS = {
+    'make_blank': make_blank,
+    'render_pdf_pages': render_pdf_pages,
+}

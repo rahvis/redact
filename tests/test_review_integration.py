@@ -15,6 +15,8 @@ import pytest
 
 import fixtures
 from workonward_read.handlers import review
+from workonward_read.pdf_ops import PageOpsJournal
+from workonward_read.search import Hit, page_count
 from workonward_read.state import AppState
 
 PT_TO_PX = 200 / 72.0
@@ -106,6 +108,8 @@ def test_perform_search_pages_and_px_rects(tmp_path):
         for x0, y0, x1, y1 in hit.rects_px:
             assert 0 <= x0 < x1 <= page_w_px
             assert 0 <= y0 < y1 <= page_h_px
+        # hits carry the page size so rects can be remapped through page ops
+        assert hit.page_size_px == pytest.approx([page_w_px, page_h_px])
 
 
 def test_perform_search_match_case(tmp_path):
@@ -156,6 +160,76 @@ def test_is_pdf_loaded_guard(tmp_path):
 
     state.file_path = str(tmp_path / 'photo.PNG')
     assert review.is_pdf_loaded(state) is False          # image import
+
+
+# ---------------------------------------------------------------------------
+# Hit remapping through the page-ops journal (search runs on the ORIGINAL
+# file, the displayed document may have been reorganized)
+# ---------------------------------------------------------------------------
+
+def _hit(page_index, rect, size=(800, 1000)):
+    return Hit(page_index=page_index, context='x', rects_px=[list(rect)],
+               page_size_px=list(size))
+
+
+def test_remap_hit_location_without_journal_is_identity():
+    hit = _hit(2, [10, 20, 30, 40])
+    assert review.remap_hit_location(hit, None, 3) == (2, [[10, 20, 30, 40]])
+    assert review.remap_hit_location(hit, PageOpsJournal(), 3) == \
+        (2, [[10, 20, 30, 40]])
+
+
+def test_remap_hit_location_delete_shifts_page_index():
+    journal = PageOpsJournal()
+    journal.record(('delete', [0]))
+    current, rects = review.remap_hit_location(
+        _hit(2, [10, 20, 30, 40]), journal, 3)
+    assert current == 1
+    assert rects == [[10, 20, 30, 40]]
+
+
+def test_remap_hit_location_deleted_page_returns_none():
+    journal = PageOpsJournal()
+    journal.record(('delete', [1]))
+    assert review.remap_hit_location(_hit(1, [10, 20, 30, 40]), journal, 3) \
+        == (None, [])
+
+
+def test_remap_hit_location_rotate_transforms_rect():
+    journal = PageOpsJournal()
+    journal.record(('rotate', {0: 90}))
+    current, rects = review.remap_hit_location(
+        _hit(0, [10, 20, 30, 60], size=(100, 200)), journal, 1)
+    assert current == 0
+    # 90 CW on a 100x200 page: corners (x, y) -> (199 - y, x), re-normalized
+    assert rects == [[139, 10, 179, 30]]
+
+
+def test_remap_hit_location_cropped_away_rect_keeps_page():
+    journal = PageOpsJournal()
+    journal.record(('crop', 0, [100, 100, 300, 400]))
+    current, rects = review.remap_hit_location(
+        _hit(0, [0, 0, 40, 40], size=(800, 1000)), journal, 1)
+    # the page survives (shown without outlines), the rect was cropped away
+    assert current == 0
+    assert rects == []
+
+
+def test_remap_hit_location_without_page_size_drops_rects_only():
+    journal = PageOpsJournal()
+    journal.record(('rotate', {0: 90}))
+    hit = Hit(page_index=0, context='x', rects_px=[[10, 20, 30, 40]])
+    assert review.remap_hit_location(hit, journal, 1) == (0, [])
+
+
+def test_page_count_helper(tmp_path):
+    pdf = fixtures.make_pdf(tmp_path / 'count.pdf', pages=3)
+    assert page_count(pdf) == 3
+    enc = fixtures.make_encrypted_pdf(tmp_path / 'enc.pdf',
+                                      user_password='pw', pages=2)
+    assert page_count(enc, password='pw') == 2
+    with pytest.raises(ValueError):
+        page_count(enc)
 
 
 # ---------------------------------------------------------------------------

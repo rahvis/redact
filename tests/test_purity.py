@@ -16,7 +16,7 @@ import pytest
 
 BUSINESS_MODULES = [
     'pdf_ops', 'annotations', 'convert', 'ocr',
-    'signing', 'forms', 'compare', 'search',
+    'signing', 'forms', 'compare', 'search', 'geometry',
 ]
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
