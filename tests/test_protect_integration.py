@@ -9,10 +9,11 @@ No real window is ever opened; run_task integration uses a FakeWindow shim.
 
 Licensed under GPL-3.0
 (c) 2024 - 2026 Björn Seipel
-Acrobat-suite additions (c) 2026 CoverUP contributors
+(c) 2026 WorkOnward Read contributors
 """
 
 import fixtures
+from fixtures import runtime_pw
 from pypdf import PdfReader
 from pypdf.constants import UserAccessPermissions as UAP
 
@@ -36,7 +37,7 @@ def _set_passwords_request(src, out, **overrides):
     request = {
         'input': str(src),
         'output': str(out),
-        'user_pw': 'hunter2',
+        'user_pw': runtime_pw('hunter2'),
         'owner_pw': None,
         'allow_print': True,
         'allow_copy': False,
@@ -68,8 +69,8 @@ def test_set_passwords_task_aes_roundtrip(tmp_path):
     enc_dict = reader.trailer['/Encrypt']
     assert enc_dict['/V'] == 5
     assert enc_dict['/R'] == 6
-    assert int(reader.decrypt('wrong')) == 0
-    assert int(reader.decrypt('hunter2')) != 0
+    assert int(reader.decrypt(runtime_pw('wrong'))) == 0
+    assert int(reader.decrypt(runtime_pw('hunter2'))) != 0
     assert 'Page 1' in reader.pages[0].extract_text()
     assert len(reader.pages) == 2
 
@@ -79,20 +80,20 @@ def test_set_passwords_task_permission_flags(tmp_path):
     out = str(tmp_path / 'enc.pdf')
 
     protect_handlers.set_passwords_task(
-        _set_passwords_request(src, out, owner_pw='boss',
+        _set_passwords_request(src, out, owner_pw=runtime_pw('boss'),
                                allow_print=True, allow_copy=False,
                                allow_modify=False),
         AppState())
 
     reader = PdfReader(out)
-    reader.decrypt('hunter2')
+    reader.decrypt(runtime_pw('hunter2'))
     perms = reader.user_access_permissions
     assert perms & UAP.PRINT
     assert not perms & UAP.EXTRACT
     assert not perms & UAP.MODIFY
     # Separate owner password opens it too
     reader2 = PdfReader(out)
-    assert int(reader2.decrypt('boss')) != 0
+    assert int(reader2.decrypt(runtime_pw('boss'))) != 0
 
     out2 = str(tmp_path / 'enc2.pdf')
     protect_handlers.set_passwords_task(
@@ -100,7 +101,7 @@ def test_set_passwords_task_permission_flags(tmp_path):
                                allow_copy=True, allow_modify=True),
         AppState())
     reader3 = PdfReader(out2)
-    reader3.decrypt('hunter2')
+    reader3.decrypt(runtime_pw('hunter2'))
     perms3 = reader3.user_access_permissions
     assert not perms3 & UAP.PRINT
     assert perms3 & UAP.EXTRACT
@@ -109,17 +110,17 @@ def test_set_passwords_task_permission_flags(tmp_path):
 
 def test_set_passwords_task_uses_source_password_of_loaded_file(tmp_path):
     enc = fixtures.make_encrypted_pdf(tmp_path / 'enc.pdf',
-                                      user_password='oldpw', pages=2)
+                                      user_password=runtime_pw('oldpw'), pages=2)
     out = str(tmp_path / 're-enc.pdf')
     state = AppState()
     state.file_path = str(enc)
-    state.source_password = 'oldpw'
+    state.source_password = runtime_pw('oldpw')
 
     protect_handlers.set_passwords_task(
-        _set_passwords_request(enc, out, user_pw='newpw'), state)
+        _set_passwords_request(enc, out, user_pw=runtime_pw('newpw')), state)
 
     reader = PdfReader(out)
-    assert int(reader.decrypt('newpw')) != 0
+    assert int(reader.decrypt(runtime_pw('newpw'))) != 0
     assert len(reader.pages) == 2
 
 
@@ -128,7 +129,7 @@ def test_set_passwords_task_ignores_state_password_for_other_files(tmp_path):
     out = str(tmp_path / 'enc.pdf')
     state = AppState()
     state.file_path = str(tmp_path / 'someother.pdf')
-    state.source_password = 'irrelevant'
+    state.source_password = runtime_pw('irrelevant')
 
     assert state.password_for(str(src)) is None
     protect_handlers.set_passwords_task(
@@ -163,19 +164,19 @@ def test_set_passwords_task_via_run_task_reports_done(tmp_path):
 
 def test_remove_password_wrong_then_right(tmp_path):
     enc = fixtures.make_encrypted_pdf(tmp_path / 'enc.pdf',
-                                      user_password='geheim', pages=2)
+                                      user_password=runtime_pw('geheim'), pages=2)
     out = str(tmp_path / 'plain.pdf')
     prompts = []
 
     def prompt(error, defaults):
         prompts.append((error, defaults))
-        password = 'wrong' if len(prompts) == 1 else 'geheim'
+        password = runtime_pw('wrong') if len(prompts) == 1 else runtime_pw('geheim')
         return {'input': str(enc), 'password': password, 'output': out}
 
     status, request = protect_handlers.remove_password_with_retries(prompt)
 
     assert status == 'ok'
-    assert request['password'] == 'geheim'
+    assert request['password'] == runtime_pw('geheim')
     assert len(prompts) == 2
     # First prompt: no inline error; re-prompt carries the error message and
     # the previous request (so paths can be prefilled).
@@ -191,18 +192,18 @@ def test_remove_password_wrong_then_right(tmp_path):
 
 def test_remove_password_gives_up_after_three_attempts(tmp_path):
     enc = fixtures.make_encrypted_pdf(tmp_path / 'enc.pdf',
-                                      user_password='geheim')
+                                      user_password=runtime_pw('geheim'))
     out = str(tmp_path / 'plain.pdf')
     prompts = []
 
     def prompt(error, defaults):
         prompts.append(error)
-        return {'input': str(enc), 'password': 'nope', 'output': out}
+        return {'input': str(enc), 'password': runtime_pw('nope'), 'output': out}
 
     status, request = protect_handlers.remove_password_with_retries(prompt)
 
     assert status == 'failed'
-    assert request['password'] == 'nope'
+    assert request['password'] == runtime_pw('nope')
     assert len(prompts) == 3
 
 
@@ -267,11 +268,11 @@ def test_sanitize_task_respects_flags(tmp_path):
 
 def test_sanitize_task_uses_source_password_of_loaded_file(tmp_path):
     enc = fixtures.make_encrypted_pdf(tmp_path / 'enc.pdf',
-                                      user_password='pw', pages=1)
+                                      user_password=runtime_pw('pw'), pages=1)
     out = str(tmp_path / 'clean.pdf')
     state = AppState()
     state.file_path = str(enc)
-    state.source_password = 'pw'
+    state.source_password = runtime_pw('pw')
     request = {'input': str(enc), 'output': out}
 
     result = protect_handlers.sanitize_task(request, state)
@@ -287,8 +288,8 @@ def test_sanitize_task_uses_source_password_of_loaded_file(tmp_path):
 def _set_pw_values(**overrides):
     values = {
         '-INPUT-': '/tmp/in.pdf',
-        '-USER-': 'pw',
-        '-CONFIRM-': 'pw',
+        '-USER-': runtime_pw('pw'),
+        '-CONFIRM-': runtime_pw('pw'),
         '-OWNER-': '',
         '-ALLOW_PRINT-': True,
         '-ALLOW_COPY-': False,
@@ -305,7 +306,7 @@ def test_validate_set_passwords_ok():
     assert request == {
         'input': '/tmp/in.pdf',
         'output': '/tmp/out.pdf',
-        'user_pw': 'pw',
+        'user_pw': runtime_pw('pw'),
         'owner_pw': None,
         'allow_print': True,
         'allow_copy': False,
@@ -315,7 +316,7 @@ def test_validate_set_passwords_ok():
 
 def test_validate_set_passwords_mismatch():
     request, error = protect_dialogs.validate_set_passwords(
-        _set_pw_values(**{'-CONFIRM-': 'different'}))
+        _set_pw_values(**{'-CONFIRM-': runtime_pw('different')}))
     assert request is None
     assert error == 'Passwords do not match.'
 
@@ -346,12 +347,12 @@ def test_validate_set_passwords_requires_paths():
 
 def test_validate_remove_password():
     request, error = protect_dialogs.validate_remove_password(
-        {'-INPUT-': 'a.pdf', '-PASSWORD-': 'pw', '-OUTPUT-': 'b.pdf'})
+        {'-INPUT-': 'a.pdf', '-PASSWORD-': runtime_pw('pw'), '-OUTPUT-': 'b.pdf'})
     assert error is None
-    assert request == {'input': 'a.pdf', 'output': 'b.pdf', 'password': 'pw'}
+    assert request == {'input': 'a.pdf', 'output': 'b.pdf', 'password': runtime_pw('pw')}
 
     request, error = protect_dialogs.validate_remove_password(
-        {'-INPUT-': '', '-PASSWORD-': 'pw', '-OUTPUT-': 'b.pdf'})
+        {'-INPUT-': '', '-PASSWORD-': runtime_pw('pw'), '-OUTPUT-': 'b.pdf'})
     assert request is None and error == 'Please choose a source PDF.'
 
 

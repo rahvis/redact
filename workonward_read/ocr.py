@@ -10,8 +10,8 @@ binary (user-configured path, PATH lookup, then common install locations)
 and all other functions degrade gracefully or raise plain exceptions when
 it is unavailable.
 
-CoverUP is licensed under GPL-3.0. (c) 2024 - 2026 Björn Seipel
-Acrobat-suite additions (c) 2026 CoverUP contributors
+Licensed under GPL-3.0. (c) 2024 - 2026 Björn Seipel
+(c) 2026 WorkOnward Read contributors
 """
 
 import io

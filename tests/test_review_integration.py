@@ -7,13 +7,14 @@ FakeWindow/FakeGraph shims where a graph surface is needed.
 
 Licensed under GPL-3.0
 (c) 2024 - 2026 Björn Seipel
-Acrobat-suite additions (c) 2026 CoverUP contributors
+(c) 2026 WorkOnward Read contributors
 """
 
 import pypdfium2 as pdfium
 import pytest
 
 import fixtures
+from fixtures import runtime_pw
 from workonward_read.handlers import review
 from workonward_read.pdf_ops import PageOpsJournal
 from workonward_read.search import Hit, page_count
@@ -131,13 +132,13 @@ def test_perform_search_empty_term_raises(tmp_path):
 
 def test_perform_search_uses_source_password(tmp_path):
     pdf = fixtures.make_encrypted_pdf(tmp_path / 'enc.pdf',
-                                      user_password='secret', pages=2)
+                                      user_password=runtime_pw('secret'), pages=2)
     state = _pdf_state(pdf, pages=2)
 
     with pytest.raises(ValueError):
         review.perform_search(state, 'Encrypted')
 
-    state.source_password = 'secret'
+    state.source_password = runtime_pw('secret')
     hits = review.perform_search(state, 'Encrypted')
     assert [hit.page_index for hit in hits] == [0, 1]
 
@@ -226,8 +227,8 @@ def test_page_count_helper(tmp_path):
     pdf = fixtures.make_pdf(tmp_path / 'count.pdf', pages=3)
     assert page_count(pdf) == 3
     enc = fixtures.make_encrypted_pdf(tmp_path / 'enc.pdf',
-                                      user_password='pw', pages=2)
-    assert page_count(enc, password='pw') == 2
+                                      user_password=runtime_pw('pw'), pages=2)
+    assert page_count(enc, password=runtime_pw('pw')) == 2
     with pytest.raises(ValueError):
         page_count(enc)
 
@@ -363,11 +364,11 @@ def test_resolve_passwords_only_for_loaded_source(tmp_path):
 
     state = AppState()
     state.file_path = pdf_a
-    state.source_password = 'secret'
+    state.source_password = runtime_pw('secret')
 
     request = {'path_a': pdf_a, 'path_b': pdf_b, 'dpi': 100, 'threshold': 24}
     resolved = review.resolve_passwords(request, state)
-    assert resolved.get('password_a') == 'secret'
+    assert resolved.get('password_a') == runtime_pw('secret')
     assert resolved.get('password_b') is None
     assert 'password_a' not in request  # original untouched
 

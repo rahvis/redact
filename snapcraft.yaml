@@ -2,7 +2,7 @@ name: workonward-read
 title: WorkOnward Read
 summary: A simple tool for redacting PDFs and images
 description: |
-  WorkOnward Read (based on CoverUP by Björn Seipel, GPL-3.0) is a
+  WorkOnward Read (based on open-source software by Björn Seipel, GPL-3.0) is a
   privacy-focused tool for redacting sensitive information in PDF
   documents and images. Users can import PDF documents, which are converted into
   images during the process. This conversion ensures that text cannot be copied

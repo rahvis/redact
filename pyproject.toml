@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "workonward-read"
-version = "0.5.1"
-description = "WorkOnward Read - a tool for redacting PDF files and images (based on CoverUP)"
+version = "0.5.2"
+description = "WorkOnward Read - a tool for redacting PDF files and images"
 readme = "README.md"
 license = {text = "GPL-3.0"}
 authors = [
@@ -56,7 +56,7 @@ dev = [
 Homepage = "https://workonward.org"
 Repository = "https://github.com/rahvis/redact"
 Issues = "https://github.com/rahvis/redact/issues"
-Upstream = "https://github.com/digidigital/CoverUP"
+Upstream = "https://digidigital.de"
 
 [project.scripts]
 workonward-read = "workonward_read.main:main"

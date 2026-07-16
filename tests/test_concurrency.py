@@ -13,7 +13,7 @@
 5. Aux-window registry routing used by main.py's read_all_windows loop.
 
 Licensed under GPL-3.0
-Acrobat-suite additions (c) 2026 CoverUP contributors
+(c) 2026 WorkOnward Read contributors
 """
 
 import os
@@ -22,6 +22,7 @@ import threading
 import pytest
 
 import fixtures
+from fixtures import runtime_pw
 from workonward_read import compare, convert, main, pdfium_io, search, tasks
 from workonward_read.dialogs import common as dialogs_common
 from workonward_read.handlers import convert as convert_handlers
@@ -165,12 +166,12 @@ def test_password_for_matches_loaded_document_only(tmp_path):
     doc.write_bytes(b'%PDF-1.4')
     state = AppState()
     state.file_path = str(doc)
-    state.source_password = 'secret'
+    state.source_password = runtime_pw('secret')
 
-    assert state.password_for(str(doc)) == 'secret'
+    assert state.password_for(str(doc)) == runtime_pw('secret')
     # A different (relative) spelling of the same path still matches.
     rel = os.path.relpath(str(doc))
-    assert state.password_for(rel) == 'secret'
+    assert state.password_for(rel) == runtime_pw('secret')
     assert state.password_for(str(tmp_path / 'other.pdf')) is None
     assert state.password_for('') is None
     assert state.password_for(None) is None
@@ -372,15 +373,15 @@ def test_ocr_picked_file_does_not_take_doc_lock(monkeypatch, tmp_path):
 
 def test_pdfium_io_open_pdf_wrong_password(tmp_path):
     enc = fixtures.make_encrypted_pdf(tmp_path / 'enc.pdf',
-                                      user_password='pw', pages=1)
+                                      user_password=runtime_pw('pw'), pages=1)
     with pytest.raises(ValueError, match='password') as err:
         pdfium_io.open_pdf(str(enc))
     assert str(err.value) == pdfium_io.PASSWORD_ERROR
 
     with pytest.raises(ValueError, match='password'):
-        pdfium_io.open_pdf(str(enc), password='wrong')
+        pdfium_io.open_pdf(str(enc), password=runtime_pw('wrong'))
 
-    with pdfium_io.pdfium_session(str(enc), 'pw') as doc:
+    with pdfium_io.pdfium_session(str(enc), runtime_pw('pw')) as doc:
         assert len(doc) == 1
 
 
@@ -393,7 +394,7 @@ def test_pdfium_io_open_pdf_missing_file(tmp_path):
 
 def test_canonical_password_message_shared_by_refactored_modules(tmp_path):
     enc = fixtures.make_encrypted_pdf(tmp_path / 'enc.pdf',
-                                      user_password='pw', pages=1)
+                                      user_password=runtime_pw('pw'), pages=1)
     attempts = (
         lambda: search.page_count(str(enc)),
         lambda: search.search_document(str(enc), 'x'),

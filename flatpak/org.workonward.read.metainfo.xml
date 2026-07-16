@@ -19,8 +19,8 @@
       you want to hide before sharing documents.
     </p>
     <p>
-      WorkOnward Read is based on CoverUP by Björn Seipel (digidigital), licensed
-      under the GPL-3.0.
+      WorkOnward Read is based on open-source software by Björn Seipel (digidigital),
+      licensed under the GPL-3.0.
     </p>
     <p>Features:</p>
     <ul>
@@ -40,7 +40,7 @@
   <screenshots>
     <screenshot type="default">
       <caption>Main application window with PDF loaded</caption>
-      <image>https://raw.githubusercontent.com/digidigital/CoverUP/refs/heads/main/Screenshots/CoverUP_screenshot.png</image>
+      <image>https://raw.githubusercontent.com/rahvis/redact/main/Screenshots/Screenshot.png</image>
     </screenshot>
   </screenshots>
 

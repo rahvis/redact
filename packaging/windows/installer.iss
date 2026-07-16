@@ -1,12 +1,12 @@
 ; Inno Setup script for WorkOnward Read (Windows x64)
 ;
 ; Build (from the repo root, after PyInstaller has produced dist\WorkOnwardRead\):
-;   ISCC.exe packaging\windows\installer.iss /DWORKONWARD_VERSION=0.5.1
+;   ISCC.exe packaging\windows\installer.iss /DWORKONWARD_VERSION=0.5.2
 ;
 ; If /DWORKONWARD_VERSION is not passed, the WORKONWARD_VERSION environment
 ; variable is used, falling back to 0.0.0 (which should never ship).
 ;
-; WorkOnward Read is based on CoverUP by Björn Seipel (digidigital), GPL-3.0.
+; WorkOnward Read is based on open-source software by Björn Seipel (digidigital), GPL-3.0.
 
 #ifndef WORKONWARD_VERSION
   #define WORKONWARD_VERSION GetEnv("WORKONWARD_VERSION")
@@ -24,7 +24,7 @@
 [Setup]
 ; Fixed AppId — NEVER change this GUID, or upgrades will install side-by-side
 ; instead of updating the existing installation. (This GUID is NEW for
-; WorkOnward Read; it intentionally differs from the upstream CoverUP GUID
+; WorkOnward Read; it intentionally differs from the upstream project's GUID
 ; so both products can coexist.)
 AppId={{012B1272-0E8E-43EE-9B4D-FC337322CBC8}
 AppName={#MyAppName}

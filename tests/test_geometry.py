@@ -5,7 +5,7 @@ a point transformed with rotate_point_cw must land exactly on the pixel the
 transpose moved it to.
 
 License: GPL-3.0
-(c) 2026 CoverUP contributors
+(c) 2026 WorkOnward Read contributors
 """
 
 import pytest

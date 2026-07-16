@@ -1,13 +1,28 @@
 """Synthesized test fixtures for the WorkOnward Read test suite.
 
 All fixtures are generated at test time with fpdf2 / Pillow / pypdf —
-no binary files are committed to the repository.
+no binary files are committed to the repository. Passwords used by tests
+are generated at runtime (see :func:`runtime_pw`); no password literal is
+ever committed to the repository.
 """
 
 import io
+import uuid
 
 from fpdf import FPDF
 from PIL import Image, ImageDraw
+
+# Runtime-generated dummy test passwords, cached per tag so that two calls
+# with the same tag within one test run agree. Never committed literals —
+# a fresh value is generated for every run.
+_RUNTIME_PWS = {}
+
+
+def runtime_pw(tag):
+    """Return a per-run dummy password for `tag` (stable within one run)."""
+    if tag not in _RUNTIME_PWS:
+        _RUNTIME_PWS[tag] = f"tpw-{tag}-{uuid.uuid4().hex[:8]}"
+    return _RUNTIME_PWS[tag]
 
 
 def make_pdf(path, pages=3, texts=None, size=(595.28, 841.89)):
@@ -28,9 +43,17 @@ def make_text_pdf(path, text="The quick brown fox jumps over the lazy dog.", pag
     return make_pdf(path, pages=pages, texts=[text] * pages)
 
 
-def make_encrypted_pdf(path, user_password="secret", pages=2, owner_password=None):
-    """Create an AES-encrypted PDF via pypdf."""
+def make_encrypted_pdf(path, user_password=None, pages=2, owner_password=None):
+    """Create an AES-encrypted PDF via pypdf.
+
+    When `user_password` is None a runtime-generated password is used
+    (``runtime_pw('fixture-enc')``) — callers that need to open the file
+    can obtain the same value from :func:`runtime_pw`.
+    """
     from pypdf import PdfReader, PdfWriter
+
+    if user_password is None:
+        user_password = runtime_pw("fixture-enc")
 
     plain = io.BytesIO()
     pdf = FPDF(unit="pt")

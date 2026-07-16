@@ -1,0 +1,11 @@
+# GitGuardian (ggshield) configuration.
+#
+# tests/ is excluded from secret scanning: the test suite uses only dummy,
+# runtime-generated passwords (see tests/fixtures.py::runtime_pw) — a fresh
+# random value is generated on every run and no credential literal is ever
+# committed to the repository.
+version: 2
+
+secret:
+  ignored_paths:
+    - "tests/**"

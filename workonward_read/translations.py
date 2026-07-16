@@ -12,8 +12,7 @@ TRANSLATIONS = {
         'about_text': '''WorkOnward Read {version}
 is free software licensed under the terms of the GPLv3.0
 
-WorkOnward Read is based on CoverUP by Björn Seipel (digidigital), GPL-3.0.
-Visit https://github.com/digidigital/CoverUP or https://coverup.digidigital.de for more information about the original project
+WorkOnward Read is based on open-source software by Björn Seipel (digidigital), GPL-3.0.
 
 ©2026 Björn Seipel -> support@digidigital.de
 
@@ -71,7 +70,7 @@ Material Symbols - https://fonts.google.com/icons''',
         'about_text': '''WorkOnward Read {version}
 ist freie Software, lizenziert unter den Bedingungen der GPLv3.0
 
-Besuchen Sie https://github.com/digidigital/CoverUP oder https://coverup.digidigital.de für weitere Informationen
+WorkOnward Read basiert auf Open-Source-Software von Björn Seipel (digidigital), GPL-3.0.
 
 ©2026 Björn Seipel -> support@digidigital.de
 

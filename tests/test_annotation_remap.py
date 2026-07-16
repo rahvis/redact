@@ -5,7 +5,7 @@ text), and cropped containers must keep the legacy inverted size convention
 (size[0] = WIDTH in pt, stored in height_in_pt) used by the export path.
 
 License: GPL-3.0
-(c) 2026 CoverUP contributors
+(c) 2026 WorkOnward Read contributors
 """
 
 import pytest

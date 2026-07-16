@@ -7,7 +7,7 @@ appimage/
 flatpak/
 snapcraft.yaml
 docs/
-coverup-files/
-workonward-read-files/
+# Local output folders created by desktop app runs (current or legacy name)
+*-files/
 *.ico
 *.svg

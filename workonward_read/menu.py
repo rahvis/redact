@@ -12,7 +12,7 @@ be built and inspected without a GUI toolkit present.
 
 Licensed under GPL-3.0
 (c) 2024 - 2026 Björn Seipel
-Acrobat-suite additions (c) 2026 CoverUP contributors
+(c) 2026 WorkOnward Read contributors
 """
 
 from workonward_read.i18n import _

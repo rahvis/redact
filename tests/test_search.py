@@ -3,12 +3,13 @@ Tests for workonward_read.search.
 
 License: GPL-3.0
 (c) 2024 - 2026 Björn Seipel
-Acrobat-suite additions (c) 2026 CoverUP contributors
+(c) 2026 WorkOnward Read contributors
 """
 
 import pytest
 
 import fixtures
+from fixtures import runtime_pw
 from workonward_read.search import Hit, search_document
 
 PT_TO_PX = 200 / 72.0
@@ -127,18 +128,18 @@ def test_unicode_term(tmp_path):
 
 def test_encrypted_pdf_with_password(tmp_path):
     pdf = fixtures.make_encrypted_pdf(tmp_path / "enc.pdf",
-                                      user_password="secret", pages=2)
-    hits = search_document(pdf, "Encrypted", password="secret")
+                                      user_password=runtime_pw("secret"), pages=2)
+    hits = search_document(pdf, "Encrypted", password=runtime_pw("secret"))
     assert [h.page_index for h in hits] == [0, 1]
 
 
 def test_encrypted_pdf_without_password_raises(tmp_path):
     pdf = fixtures.make_encrypted_pdf(tmp_path / "enc.pdf",
-                                      user_password="secret")
+                                      user_password=runtime_pw("secret"))
     with pytest.raises(ValueError):
         search_document(pdf, "Encrypted")
     with pytest.raises(ValueError):
-        search_document(pdf, "Encrypted", password="wrong")
+        search_document(pdf, "Encrypted", password=runtime_pw("wrong"))
 
 
 def test_progress_callback_reaches_100(tmp_path):

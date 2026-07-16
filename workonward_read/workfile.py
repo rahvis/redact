@@ -22,7 +22,7 @@ Passwords are never persisted.
 
 Licensed under GPL-3.0
 (c) 2024 - 2026 Björn Seipel
-Acrobat-suite additions (c) 2026 CoverUP contributors
+(c) 2026 WorkOnward Read contributors
 """
 
 import os
@@ -40,8 +40,8 @@ def get_default_datadir():
     """
     Return (and create) the WorkOnward Read user data directory.
 
-    One-time migration: if the new data directory is empty and the old
-    CoverUP data directory exists, the JSON workfiles stored there are
+    One-time migration: if the new data directory is empty and the previous
+    product's data directory exists, the JSON workfiles stored there are
     copied over (best effort) so existing sessions survive the rename.
     Note: workfiles are JSON documents saved without a .json extension
     (their names are MD5 hashes of the document path).
@@ -53,9 +53,11 @@ def get_default_datadir():
     except Exception:
         pass
 
-    # Best-effort one-time migration of old CoverUP workfiles.
+    # Best-effort one-time migration of the previous product's workfiles.
     try:
         if os.path.isdir(datadir) and not os.listdir(datadir):
+            # Data-dir name of the previous product (pre-rename); the literal
+            # is required so upgraded installs keep their saved sessions.
             old_datadir = user_data_dir('CoverUP', 'digidigital')
             if os.path.isdir(old_datadir):
                 for name in os.listdir(old_datadir):

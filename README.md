@@ -1,224 +1,204 @@
-# WorkOnward Read — PDF Redaction Software
+# WorkOnward Read
 
 ![WorkOnward Read logo](WorkOnwardRead.svg)
 
-**WorkOnward Read** is a free software, developed in Python, designed to provide a secure and straightforward method for redacting PDF files. It enables users to conceal sensitive text passages by overlaying them with black or white bars.
-
-Users can import PDF documents into WorkOnward Read, which are then converted into images. This conversion process ensures that the text cannot be copied from the document or indexed without OCR, enhancing the security of your information. Additionally, invisible layers within the PDF are not converted, providing an extra layer of security.
-
-It also supports the import of PNG and JPG files, in addition to PDFs.
-
-Given that image-based PDFs can become quite large, **WorkOnward Read** offers two modes: a high-quality mode that maintains the visual fidelity of the document, and a compressed mode that reduces file size at the expense of some visual quality.
-
-Whether you're dealing with a single page or an entire document, **WorkOnward Read** provides a flexible and easy solution for all your PDF redaction needs.
-
-## Credits — based on CoverUP
-
-**WorkOnward Read is based on [CoverUP](https://github.com/digidigital/CoverUP) by Björn Seipel ([digidigital](https://digidigital.de)), GPL-3.0.**
-All original copyright notices are preserved in the source headers. Support the
-original author: [Buy him a pizza!](https://buymeacoffee.com/digidigital) 👍
-
----
-
-![A screenshot of PDF redaction Software | Ein Screenshot der Software zum Schwärzen von PDF-Dokumenten](https://raw.githubusercontent.com/digidigital/CoverUP/main/Screenshots/CoverUP_screenshot.png)
-
----
+**WorkOnward Read** is a privacy-first, offline, open-source PDF editor and
+redaction suite. It permanently removes sensitive content from PDFs and images
+by rasterizing pages and burning redaction bars into the pixels — nothing to
+"un-hide" later — and adds a full toolbox around it: annotate, sign, organize
+pages, convert, OCR, compare, and batch-process documents. Everything runs
+locally on your machine; no cloud services, no telemetry, no account.
 
 ## Features
 
-- Import PDF, PNG, and JPG files
-- Draw black or white redaction bars over sensitive content
-- Password-protected PDF support
-- High-quality and compressed export modes
-- Session persistence - continue where you left off
-- Undo functionality for corrections
-- Zoom in/out for precise redaction
-- Command-line file argument support
-- Export single pages or entire documents
-- **Multi-language support** (25 languages including English, German, Spanish, French, Chinese, and more)
+### Redact & Protect
 
-## Installation
+- **Permanent redaction** — draw black or white bars over anything sensitive; pages are rasterized and the bars become part of the image, so covered content is gone for good.
+- **Sanitize documents** — strip metadata (XMP and document info), embedded JavaScript, embedded files, and auto-run actions in one step.
+- **Password protection** — encrypt PDFs with AES-256 (open password and/or owner password).
+- **Permission restrictions** — allow or deny printing, copying, and modification via owner-password permission flags.
+- **Remove security** — decrypt a PDF when you know its password.
 
-### Linux - Snap Store (upstream CoverUP)
+### Annotate & Sign
 
-The Snap Store channel below ships the **upstream CoverUP** app by digidigital,
-not WorkOnward Read. To install WorkOnward Read on Linux, build the snap from
-this repository (`snapcraft.yaml`) or use the AppImage/Flatpak recipes in
-`appimage/` and `flatpak/`.
+- **Highlight, underline, strikethrough** — mark up text passages.
+- **Freehand drawing** — pencil tool for hand-drawn marks.
+- **Shapes** — rectangles, ellipses, lines, and arrows.
+- **Stamps** — Approved / Draft / custom stamps.
+- **Text boxes & typewriter** — place text anywhere on a page.
+- **Insert images** — drop an image onto any page.
+- **Fill & Sign** — type, draw, or place an image signature, burned in on export.
+- **Certificate-based digital signatures** — sign with a PKCS#12 (.p12) certificate via pyHanko, invisible or visible signature box.
+- **Signature validation** — integrity and certificate-chain report for signed PDFs.
+- **Form filling** — fill AcroForm fields losslessly, with optional flattening.
+- **Measure** — simple ruler tool (points to cm/in via the page size).
 
-[![Get it from the Snap Store](https://snapcraft.io/static/images/badges/en/snap-store-black.svg)](https://snapcraft.io/coverup)
+### Organize Pages
+
+- **Merge PDFs** — combine multiple documents losslessly.
+- **Delete, reorder, rotate** — full page management with thumbnails.
+- **Split & extract** — split by page ranges or pull out selected pages.
+- **Insert pages** — from another PDF or blank pages.
+- **Crop pages** — trim page margins.
+- **Watermarks** — text or image watermarks.
+- **Headers & footers** — repeatable page furniture.
+- **Page numbering & Bates numbering** — sequential stamps for legal workflows.
+
+### Convert & Export
+
+- **Images to PDF** — turn PNG/JPG files (one or many) into a PDF.
+- **PDF to Word (.docx)** — paragraph-level text reconstruction.
+- **PDF to text, HTML, or images** — export content in open formats.
+- **Compress** — raster mode (flatten + downsample) or lossless mode (image recompression + stream compression).
+- **Export single pages** — save the current page as an image.
+
+### OCR
+
+- **Searchable PDFs** — recognize text in scans via Tesseract (auto-detected when installed; see [OCR prerequisites](#ocr-prerequisites)).
+
+### Review & Compare
+
+- **Compare two PDFs** — page-image difference detection with a side-by-side report.
+- **Text search** — find text across the document with hit navigation.
+- **Document properties** — view and edit title, author, and other metadata.
+
+### Batch
+
+- **Batch processing** — apply a tool across a whole folder of documents in one run.
+
+## Security model
+
+Redaction in WorkOnward Read is destructive by design: every page is
+rasterized to an image, redaction bars are painted as solid pixels onto that
+image, and a brand-new PDF is rebuilt from the images with no text layer.
+Covered content cannot be recovered by copy/paste, `pdftotext`, "remove the
+overlay", or OCR of the redacted area — the pixels underneath are simply
+overwritten. Because the output is a fresh file, hidden layers, annotations,
+and attachments from the source do not carry over. The separate **Sanitize**
+tool strips metadata, JavaScript, embedded files, and auto-run actions from
+PDFs you don't want to rasterize, and password protection uses **AES-256**
+encryption.
+
+## Downloads
+
+Grab the latest release from the
+[GitHub Releases page](https://github.com/rahvis/redact/releases/latest).
+Each release ships:
+
+- **`WorkOnwardRead-Setup-<version>-x64.exe`** — Windows 10/11 (64-bit) installer; per-user by default, no admin rights required.
+- **`WorkOnwardRead-<version>-macOS-arm64.dmg`** — macOS on Apple Silicon (M1 and newer).
+- **`WorkOnwardRead-<version>-macOS-x86_64.dmg`** — macOS on Intel processors.
+- **`SHA256SUMS.txt`** — checksums for verifying your download.
+
+### Install on Windows
+
+1. Download and run the installer.
+2. If SmartScreen shows "Windows protected your PC", click **More info → Run anyway** (the app is open source but not code-signed with a paid certificate).
+3. Silent install for scripted deployment: `/VERYSILENT /SUPPRESSMSGBOXES /NORESTART`.
+
+### Install on macOS
+
+1. Open the DMG and drag **WorkOnward Read.app** to **Applications**.
+2. First launch: right-click the app and choose **Open**, then **Open** again. On macOS 15+ use **System Settings → Privacy & Security → Open Anyway** instead. Full instructions ship inside the DMG (`README-Open-Me-First.txt`).
+
+### Verify your download
 
 ```bash
-sudo snap install coverup   # upstream CoverUP, not WorkOnward Read
+shasum -a 256 <file>                 # macOS
+CertUtil -hashfile <file> SHA256     # Windows
 ```
 
-### Python Package (pip)
+Compare the output against the matching line in `SHA256SUMS.txt`.
+
+### Linux
+
+Build recipes for Snap (`snapcraft.yaml`), AppImage (`appimage/`), and
+Flatpak (`flatpak/`) are included in the repository, or run from source
+(below).
+
+## Web app
+
+A browser-based version of the redaction workflow lives in [`web/`](web/):
+upload a PDF, drag redaction bars over sensitive content, and download a
+flattened, permanently redacted file. Processing happens in memory on your own
+instance — files are never written to disk or sent anywhere else.
+
+Self-host it with Docker:
 
 ```bash
-# WorkOnward Read (this project), from a checkout of this repository:
-pip install .
-
-# The upstream CoverUP package remains available on PyPI as:
-pip install coverup-pdf
+cd web
+docker compose up --build   # → http://localhost:8090
 ```
 
-### Windows / Other
+See [`web/README.md`](web/README.md) for the architecture and API, and
+[`web/deploy/README.md`](web/deploy/README.md) for production deployment.
 
-[Windows Installer and other download options](https://github.com/rahvis/redact/releases/latest)
+## Run from source
 
-## Downloads (Windows & macOS)
-
-Each GitHub release ships three desktop artifacts:
-
-- **`WorkOnwardRead-Setup-<version>-x64.exe`** — Windows 64-bit installer (per-user by default, no admin required). Silent install: `/VERYSILENT /SUPPRESSMSGBOXES /NORESTART`
-- **`WorkOnwardRead-<version>-macOS-arm64.dmg`** — macOS on Apple Silicon (M1 and newer)
-- **`WorkOnwardRead-<version>-macOS-x86_64.dmg`** — macOS on Intel processors
-
-**First-launch warnings** (the app is open source and not code-signed with a paid certificate):
-
-- **Windows SmartScreen:** if you see "Windows protected your PC", click **More info → Run anyway**.
-- **macOS Gatekeeper:** right-click the app and choose **Open**, then **Open** again. On macOS 15+ you may instead need **System Settings → Privacy & Security → Open Anyway**. Full instructions are included in the DMG (`README-Open-Me-First.txt`).
-
-**Verify your download:** every release includes a `SHA256SUMS.txt`; compare it with `shasum -a 256 <file>` (macOS) or `CertUtil -hashfile <file> SHA256` (Windows).
-
-**Build it yourself:** see [`packaging/README.md`](packaging/README.md) for local Windows/macOS build instructions.
-
-## Usage
-
-### Graphical Interface
-
-Simply launch **WorkOnward Read** and use the toolbar to:
-1. Open a PDF or image file
-2. Draw redaction bars by clicking and dragging
-3. Use the eraser tool to remove bars
-4. Save the redacted document
-
-### Command Line
+Requirements: **Python 3.13** with **Tcl/Tk 8.6** (Tcl 9 is not yet supported
+by the GUI toolkit — see `docs/tcl9-migration.md`).
 
 ```bash
-# Open a file directly
-workonward-read document.pdf
-
-# Open an image
-workonward-read screenshot.png
-
-# Show version
-workonward-read --version
-```
-
-## Development
-
-### Requirements
-
-- Python 3.9+
-- Dependencies listed in `requirements.txt`
-
-### Setup
-
-```bash
-# Clone the repository
 git clone https://github.com/rahvis/redact.git
 cd redact
 
-# Install dependencies
-pip install -r requirements.txt
-
-# Run from source
-python WorkOnwardRead.py
-
-# Or install as package
+python -m venv .venv && source .venv/bin/activate
 pip install -e .
-workonward-read
+
+# launch the GUI
+python -m workonward_read
+# or:
+workonward-read document.pdf     # open a file directly
+workonward-read --version
 ```
 
-### Building Packages
+## Build installers locally
 
-#### Python Package (PyPI)
+The Windows installer and macOS DMGs can be built on your own machine — see
+[`packaging/README.md`](packaging/README.md) for one-shot build scripts,
+requirements, and the CI release pipeline.
 
-```bash
-# Install build tools
-pip install build twine
+## OCR prerequisites
 
-# Build the package
-python -m build
+OCR features use [Tesseract](https://github.com/tesseract-ocr/tesseract),
+which is not bundled. Install it once and WorkOnward Read detects it
+automatically:
 
-# Upload to PyPI (requires PyPI credentials)
-twine upload dist/*
-```
+- **Windows:** installer from [UB Mannheim](https://github.com/UB-Mannheim/tesseract/wiki)
+- **macOS:** `brew install tesseract`
+- **Debian/Ubuntu:** `sudo apt install tesseract-ocr`
+- **Fedora:** `sudo dnf install tesseract`
 
-#### Windows (PyInstaller)
+## Languages
 
-```bash
-# Install PyInstaller
-pip install pyinstaller
+The app UI is translated into **26 languages** (English, German, Spanish,
+French, Italian, Portuguese, Romanian, Dutch, Swedish, Danish, Norwegian,
+Icelandic, Polish, Czech, Slovak, Bulgarian, Serbian, Croatian, Slovenian,
+Greek, Turkish, Lithuanian, Latvian, Estonian, Chinese, and Hindi) and
+follows your system language automatically. Translations live in
+`workonward_read/translations.py`.
 
-# Build (onedir; also used by the Windows installer and macOS app)
-pyinstaller packaging/workonward_read.spec --noconfirm
-```
+## License & credits
 
-### Internationalization (i18n)
+This project is licensed under the **GPL-3.0** — see [LICENSE](LICENSE).
 
-WorkOnward Read supports 25 languages. The UI automatically detects the system language and displays translations accordingly.
+WorkOnward Read is based on open-source software by Björn Seipel
+([digidigital](https://digidigital.de)), GPL-3.0. All original copyright
+notices — (c) 2024 - 2026 Björn Seipel — are preserved in the source headers.
+Support the original author: [buy him a pizza!](https://buymeacoffee.com/digidigital)
 
-**Supported languages:** English, German, Spanish, French, Italian, Portuguese, Romanian, Dutch, Swedish, Danish, Norwegian, Icelandic, Polish, Czech, Slovak, Bulgarian, Serbian, Croatian, Slovenian, Greek, Turkish, Lithuanian, Latvian, Estonian, Chinese, Hindi
+Open-source libraries used:
 
-Translations are stored in `workonward_read/translations.py`. To add or modify translations, edit the `TRANSLATIONS` dictionary in that file.
+- [FreeSimpleGUI](https://github.com/spyoungtech/FreeSimpleGui) — GUI framework
+- [pypdfium2](https://github.com/pypdfium2-team/pypdfium2) — PDF rendering
+- [pypdf](https://github.com/py-pdf/pypdf) — lossless PDF operations
+- [fpdf2](https://py-pdf.github.io/fpdf2/) — PDF creation
+- [Pillow](https://python-pillow.org/) — image processing
+- [pyHanko](https://github.com/MatthiasValvekens/pyHanko) — digital signatures
+- [Material Symbols](https://fonts.google.com/icons) — UI icons
 
-## License
+## Contributing
 
-This project is licensed under the GPL-3.0 License - see the [LICENSE](LICENSE) file for details.
-
-WorkOnward Read is based on CoverUP by Björn Seipel (digidigital), GPL-3.0.
-Original copyright: (c) 2024 - 2026 Björn Seipel.
-
-## FOSS Credits
-
-- [CoverUP](https://github.com/digidigital/CoverUP) - the original application this project is based on
-- [FreeSimpleGUI](https://github.com/spyoungtech/FreeSimpleGui) - GUI framework
-- [pypdfium2](https://github.com/pypdfium2-team/pypdfium2) - PDF rendering
-- [fpdf2](https://py-pdf.github.io/fpdf2/) - PDF creation
-- [Pillow](https://python-pillow.org/) - Image processing
-- [Material Symbols](https://fonts.google.com/icons) - UI icons
-
----
-
-# Schwärzen von PDF Dokumenten mit WorkOnward Read
-
-**WorkOnward Read** ist eine kostenlose Software, die in Python entwickelt wurde, um eine sichere und unkomplizierte Methode zur Schwärzung von PDF-Dateien bereitzustellen. Sie ermöglicht es den Benutzern, sensible Textpassagen zu verbergen, indem sie diese mit schwarzen oder weißen Balken überlagern.
-
-Benutzer können PDF-Dokumente in **WorkOnward Read** importieren, die dann in Bilder umgewandelt werden. Dieser Umwandlungsprozess stellt sicher, dass der Text nicht ohne zusätzliche Texterkennung kopiert oder indexiert werden kann, was die Sicherheit der Informationen erhöht. Zusätzlich werden unsichtbare Schichten innerhalb der PDF nicht konvertiert, was eine zusätzliche Sicherheitsebene gegen versehentliche Veröffentlichung bietet.
-
-Es unterstützt auch den Import von PNG- und JPG-Dateien, zusätzlich zu PDFs.
-
-Da bildbasierte PDFs recht groß werden können, bietet WorkOnward Read zwei Exportoptonen an: einen Modus in hoher Qualität, der die visuelle Genauigkeit des Dokuments weitestgehend beibehält, und einen komprimierten Modus, der die Dateigröße der exportierten PDF-Datei auf Kosten von visueller Qualität reduziert.
-
-Ob Sie mit einer einzelnen Seite oder einem gesamten Dokument arbeiten, **WorkOnward Read** bietet eine flexible und einfache Lösung für alle Ihre Bedürfnisse zur Schwärzung von PDFs.
-
-**WorkOnward Read basiert auf [CoverUP](https://github.com/digidigital/CoverUP) von Björn Seipel ([digidigital](https://digidigital.de)), GPL-3.0.**
-
-## Installation
-
-### Linux - Snap Store (Original CoverUP)
-
-Der folgende Snap-Store-Kanal liefert das **Original CoverUP** von digidigital,
-nicht WorkOnward Read:
-
-[![Get it from the Snap Store](https://snapcraft.io/static/images/badges/en/snap-store-black.svg)](https://snapcraft.io/coverup)
-
-```bash
-sudo snap install coverup   # Original CoverUP, nicht WorkOnward Read
-```
-
-### Python-Paket (pip)
-
-```bash
-# WorkOnward Read (dieses Projekt), aus diesem Repository:
-pip install .
-
-# Das Original-CoverUP-Paket bleibt auf PyPI verfügbar als:
-pip install coverup-pdf
-```
-
-### Windows / Andere
-
-[Windows Installer und andere Downloadoptionen](https://github.com/rahvis/redact/releases/latest)
+Bug reports and pull requests are welcome at
+[github.com/rahvis/redact](https://github.com/rahvis/redact/issues). Please
+run the test suite (`pytest tests/`) before submitting changes.

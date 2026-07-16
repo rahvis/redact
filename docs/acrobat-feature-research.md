@@ -1,12 +1,12 @@
-# Adobe Acrobat Premium Feature Research → CoverUP Feature Map
+# Adobe Acrobat Premium Feature Research → WorkOnward Read Feature Map
 
 Research date: 2026-07-16. Compiled from Adobe's feature and version-comparison pages and
 independent comparisons. Tiers: **R** = free Acrobat Reader, **S** = Acrobat Standard,
 **P** = Acrobat Pro / mobile "Acrobat Premium".
 
-Status legend for CoverUP: ✅ implemented · ⚠️ partial (documented limitation) · ❌ out of scope (reason given).
+Status legend for WorkOnward Read: ✅ implemented · ⚠️ partial (documented limitation) · ❌ out of scope (reason given).
 
-| # | Category | Feature | Tier | CoverUP status |
+| # | Category | Feature | Tier | WorkOnward Read status |
 |---|----------|---------|------|----------------|
 | 1 | View | View / print / zoom / page navigation / search | R | ✅ view, zoom, nav existed; text search with hit navigation added |
 | 2 | Create | Create PDF from images | S | ✅ existed (PNG/JPG import); multi-image → one PDF added |

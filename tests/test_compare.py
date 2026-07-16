@@ -3,7 +3,7 @@ Tests for workonward_read.compare.
 
 License: GPL-3.0
 (c) 2024 - 2026 Björn Seipel
-Acrobat-suite additions (c) 2026 CoverUP contributors
+(c) 2026 WorkOnward Read contributors
 """
 
 import os
@@ -13,6 +13,7 @@ import pytest
 from fpdf import FPDF
 
 import fixtures
+from fixtures import runtime_pw
 from workonward_read.compare import (
     CompareResult,
     PageDiff,
@@ -112,14 +113,14 @@ def test_different_page_counts(tmp_path):
 
 def test_encrypted_inputs(tmp_path):
     enc = fixtures.make_encrypted_pdf(tmp_path / "enc.pdf",
-                                      user_password="secret", pages=2)
-    result = compare_pdfs(enc, enc, password_a="secret", password_b="secret")
+                                      user_password=runtime_pw("secret"), pages=2)
+    result = compare_pdfs(enc, enc, password_a=runtime_pw("secret"), password_b=runtime_pw("secret"))
     assert result.identical is True
 
     with pytest.raises(ValueError):
         compare_pdfs(enc, enc)
     with pytest.raises(ValueError):
-        compare_pdfs(enc, enc, password_a="secret", password_b="wrong")
+        compare_pdfs(enc, enc, password_a=runtime_pw("secret"), password_b=runtime_pw("wrong"))
 
 
 def test_progress_callback(tmp_path):

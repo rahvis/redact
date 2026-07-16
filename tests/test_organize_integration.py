@@ -8,13 +8,14 @@ workonward_read.handlers.organize (never an sg.Window).
 
 Licensed under GPL-3.0
 (c) 2024 - 2026 Björn Seipel
-Acrobat-suite additions (c) 2026 CoverUP contributors
+(c) 2026 WorkOnward Read contributors
 """
 
 import os
 
 import pytest
 import fixtures
+from fixtures import runtime_pw
 from pypdf import PdfReader
 
 from workonward_read import page_render, pdf_ops
@@ -83,8 +84,8 @@ def test_render_pdf_pages_matches_import_ppi(tmp_path):
 
 def test_render_pdf_pages_encrypted(tmp_path):
     path = fixtures.make_encrypted_pdf(tmp_path / 'enc.pdf',
-                                       user_password='pw', pages=1)
-    containers = page_render.render_pdf_pages(path, [0], password='pw')
+                                       user_password=runtime_pw('pw'), pages=1)
+    containers = page_render.render_pdf_pages(path, [0], password=runtime_pw('pw'))
     assert len(containers) == 1
     containers[0].close()
 
@@ -322,14 +323,14 @@ def test_extract_core_including_encrypted(tmp_path):
     assert len(PdfReader(out).pages) == 2
 
     enc = fixtures.make_encrypted_pdf(tmp_path / 'enc.pdf',
-                                      user_password='pw', pages=3)
+                                      user_password=runtime_pw('pw'), pages=3)
     out2 = str(tmp_path / 'extract2.pdf')
     org.extract_core({'input': enc, 'pages': '1', 'output': out2},
-                     password='pw')
+                     password=runtime_pw('pw'))
     assert len(PdfReader(out2).pages) == 1
     with pytest.raises(ValueError):
         org.extract_core({'input': enc, 'pages': '1', 'output': out2},
-                         password='wrong')
+                         password=runtime_pw('wrong'))
 
 
 def test_parse_split_ranges():

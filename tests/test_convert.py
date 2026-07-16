@@ -4,7 +4,7 @@ Tests for workonward_read.convert — export/conversion tools.
 All fixtures are synthesized at test time (see tests/fixtures.py).
 
 Licensed under GPL-3.0. (c) 2024 - 2026 Björn Seipel
-Acrobat-suite additions (c) 2026 CoverUP contributors
+(c) 2026 WorkOnward Read contributors
 """
 
 import csv
@@ -16,6 +16,7 @@ from PIL import Image
 from pypdf import PdfReader
 
 import fixtures
+from fixtures import runtime_pw
 from workonward_read import convert
 
 
@@ -335,54 +336,54 @@ class TestBatchApply:
 
 class TestEncryptedInputs:
     def test_pdf_to_text_with_password(self, tmp_path):
-        pdf_path = fixtures.make_encrypted_pdf(tmp_path / "enc.pdf", "secret", pages=2)
-        content = _extracted_text(pdf_path, tmp_path, password="secret")
+        pdf_path = fixtures.make_encrypted_pdf(tmp_path / "enc.pdf", runtime_pw("secret"), pages=2)
+        content = _extracted_text(pdf_path, tmp_path, password=runtime_pw("secret"))
         assert "Encrypted page 1" in content
 
     def test_pdf_to_text_without_password_raises(self, tmp_path):
-        pdf_path = fixtures.make_encrypted_pdf(tmp_path / "enc.pdf", "secret")
+        pdf_path = fixtures.make_encrypted_pdf(tmp_path / "enc.pdf", runtime_pw("secret"))
         with pytest.raises(ValueError, match="password"):
             convert.pdf_to_text(pdf_path, str(tmp_path / "out.txt"))
 
     def test_pdf_to_images_with_password(self, tmp_path):
-        pdf_path = fixtures.make_encrypted_pdf(tmp_path / "enc.pdf", "secret", pages=1)
+        pdf_path = fixtures.make_encrypted_pdf(tmp_path / "enc.pdf", runtime_pw("secret"), pages=1)
         written = convert.pdf_to_images(
-            pdf_path, str(tmp_path / "imgs"), dpi=72, password="secret"
+            pdf_path, str(tmp_path / "imgs"), dpi=72, password=runtime_pw("secret")
         )
         assert len(written) == 1 and os.path.isfile(written[0])
 
     def test_pdf_to_docx_with_password(self, tmp_path):
         from docx import Document
 
-        pdf_path = fixtures.make_encrypted_pdf(tmp_path / "enc.pdf", "secret", pages=1)
+        pdf_path = fixtures.make_encrypted_pdf(tmp_path / "enc.pdf", runtime_pw("secret"), pages=1)
         out = convert.pdf_to_docx(
-            pdf_path, str(tmp_path / "enc.docx"), password="secret"
+            pdf_path, str(tmp_path / "enc.docx"), password=runtime_pw("secret")
         )
         document = Document(out)
         joined = " ".join(p.text for p in document.paragraphs)
         assert "Encrypted page 1" in joined
 
     def test_pdf_to_docx_wrong_password_raises(self, tmp_path):
-        pdf_path = fixtures.make_encrypted_pdf(tmp_path / "enc.pdf", "secret")
+        pdf_path = fixtures.make_encrypted_pdf(tmp_path / "enc.pdf", runtime_pw("secret"))
         with pytest.raises(ValueError, match="password"):
             convert.pdf_to_docx(
-                pdf_path, str(tmp_path / "enc.docx"), password="wrong"
+                pdf_path, str(tmp_path / "enc.docx"), password=runtime_pw("wrong")
             )
 
     def test_compress_lossless_with_password(self, tmp_path):
-        pdf_path = fixtures.make_encrypted_pdf(tmp_path / "enc.pdf", "secret", pages=1)
+        pdf_path = fixtures.make_encrypted_pdf(tmp_path / "enc.pdf", runtime_pw("secret"), pages=1)
         out = str(tmp_path / "out.pdf")
-        result = convert.compress_pdf_lossless(pdf_path, out, password="secret")
+        result = convert.compress_pdf_lossless(pdf_path, out, password=runtime_pw("secret"))
         assert result["after_bytes"] > 0
 
     def test_compress_lossless_missing_password_raises(self, tmp_path):
-        pdf_path = fixtures.make_encrypted_pdf(tmp_path / "enc.pdf", "secret")
+        pdf_path = fixtures.make_encrypted_pdf(tmp_path / "enc.pdf", runtime_pw("secret"))
         with pytest.raises(ValueError, match="password"):
             convert.compress_pdf_lossless(pdf_path, str(tmp_path / "out.pdf"))
 
     def test_compress_raster_with_password(self, tmp_path):
-        pdf_path = fixtures.make_encrypted_pdf(tmp_path / "enc.pdf", "secret", pages=1)
+        pdf_path = fixtures.make_encrypted_pdf(tmp_path / "enc.pdf", runtime_pw("secret"), pages=1)
         out = convert.compress_pdf_raster(
-            pdf_path, str(tmp_path / "out.pdf"), dpi=72, password="secret"
+            pdf_path, str(tmp_path / "out.pdf"), dpi=72, password=runtime_pw("secret")
         )
         assert os.path.getsize(out) > 0

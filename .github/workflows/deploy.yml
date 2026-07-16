@@ -82,7 +82,7 @@ jobs:
           username: ${{ secrets.DROPLET_USER }}
           key: ${{ secrets.DROPLET_SSH_KEY }}
           source: "web/deploy/docker-compose.prod.yml,web/deploy/Caddyfile"
-          target: "/opt/coverup"
+          target: "/opt/workonward-read"
           strip_components: 2
 
       - name: Deploy on the droplet
@@ -116,8 +116,15 @@ jobs:
               ufw allow 443/tcp || true
             fi
 
-            # 3. Pull the freshly built image and (re)start the stack.
-            cd /opt/coverup
+            # 3. One-time migration from the legacy deploy directory: stop the
+            #    old stack so it frees ports 80/443 for the new one (the new
+            #    stack re-issues TLS certs on first start).
+            if [ -f /opt/coverup/docker-compose.prod.yml ]; then
+              docker compose -f /opt/coverup/docker-compose.prod.yml down --remove-orphans || true
+            fi
+
+            # 4. Pull the freshly built image and (re)start the stack.
+            cd /opt/workonward-read
             echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
             export WORKONWARD_IMAGE="${IMAGE}:latest"
             export SITE_DOMAIN="${SITE_DOMAIN}"

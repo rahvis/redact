@@ -6,7 +6,7 @@ tesseract settings JSON.
 
 Licensed under GPL-3.0
 (c) 2024 - 2026 Björn Seipel
-Acrobat-suite additions (c) 2026 CoverUP contributors
+(c) 2026 WorkOnward Read contributors
 """
 
 import json
@@ -18,6 +18,7 @@ from PIL import Image, ImageDraw, ImageFont
 from pypdf import PdfReader
 
 import fixtures
+from fixtures import runtime_pw
 from workonward_read import ocr
 from workonward_read.handlers import convert as convert_handlers
 from workonward_read.image_container import ImageContainer
@@ -157,11 +158,11 @@ def test_convert_to_html_with_embedded_page_images(tmp_path):
 
 def test_convert_loaded_file_uses_source_password(tmp_path):
     pdf = fixtures.make_encrypted_pdf(tmp_path / 'enc.pdf',
-                                      user_password='secret', pages=1)
+                                      user_password=runtime_pw('secret'), pages=1)
     out = str(tmp_path / 'enc.txt')
     request = {'target': 'text', 'use_loaded': True, 'input_path': None,
                'output': out}
-    state = _state(file_path=pdf, password='secret')
+    state = _state(file_path=pdf, password=runtime_pw('secret'))
     paths = convert_handlers.run_convert(request, state)
 
     assert paths == [out]

@@ -81,3 +81,15 @@ builddir/
 parts/
 prime/
 stage/
+
+# --- Secret material (never commit credentials, keys, or certificates) ---
+.env
+.env.*
+*.env
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+secrets/
+*.secret

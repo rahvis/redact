@@ -5,12 +5,13 @@ fixtures.
 
 License: GPL-3.0
 (c) 2024 - 2026 Björn Seipel
-Acrobat-suite additions (c) 2026 CoverUP contributors
+(c) 2026 WorkOnward Read contributors
 """
 
 from datetime import datetime, timedelta, timezone
 
 import fixtures
+from fixtures import runtime_pw
 import pytest
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
@@ -21,7 +22,7 @@ from cryptography.x509.oid import NameOID
 from workonward_read import signing
 
 TEST_CN = "WorkOnward Read Test Signer"
-P12_PASSWORD = b"test-pass"
+P12_PASSWORD = runtime_pw("p12").encode("ascii")
 
 
 def _make_credentials(tmp_path, cn=TEST_CN, password=P12_PASSWORD):
@@ -218,20 +219,20 @@ def test_tampered_file_reports_not_intact(tmp_path, credentials):
 
 def test_sign_encrypted_input(tmp_path, credentials):
     p12_path, pem_path = credentials
-    src = fixtures.make_encrypted_pdf(tmp_path / "enc.pdf", user_password="secret")
+    src = fixtures.make_encrypted_pdf(tmp_path / "enc.pdf", user_password=runtime_pw("secret"))
     out = str(tmp_path / "signed.pdf")
 
     # Missing password -> clear error, no output corruption.
     with pytest.raises(ValueError):
         signing.sign_pdf(src, out, p12_path, P12_PASSWORD)
 
-    signing.sign_pdf(src, out, p12_path, P12_PASSWORD, password="secret")
+    signing.sign_pdf(src, out, p12_path, P12_PASSWORD, password=runtime_pw("secret"))
 
     with pytest.raises(ValueError):
         signing.validate_signatures(out)  # password required
 
     reports = signing.validate_signatures(
-        out, extra_trust_roots=[pem_path], password="secret"
+        out, extra_trust_roots=[pem_path], password=runtime_pw("secret")
     )
     assert reports[0]["intact"] is True
     assert reports[0]["valid"] is True

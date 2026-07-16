@@ -4,13 +4,14 @@ properties and rotation.
 
 License: GPL-3.0
 (c) 2024 - 2026 Björn Seipel
-Acrobat-suite additions (c) 2026 CoverUP contributors
+(c) 2026 WorkOnward Read contributors
 """
 
 from datetime import datetime
 
 import pytest
 import fixtures
+from fixtures import runtime_pw
 from pypdf import PdfReader, PdfWriter
 from pypdf.annotations import Link
 from pypdf.constants import UserAccessPermissions as UAP
@@ -39,20 +40,20 @@ def test_merge_pdfs(tmp_path):
 
 def test_merge_with_encrypted_input(tmp_path):
     a = fixtures.make_pdf(tmp_path / "a.pdf", pages=1)
-    enc = fixtures.make_encrypted_pdf(tmp_path / "enc.pdf", user_password="pw1", pages=2)
+    enc = fixtures.make_encrypted_pdf(tmp_path / "enc.pdf", user_password=runtime_pw("pw1"), pages=2)
     out = str(tmp_path / "merged.pdf")
 
-    count = pdf_ops.merge_pdfs([a, enc], out, passwords={enc: "pw1"})
+    count = pdf_ops.merge_pdfs([a, enc], out, passwords={enc: runtime_pw("pw1")})
 
     assert count == 3
     assert len(PdfReader(out).pages) == 3
 
 
 def test_merge_encrypted_wrong_or_missing_password(tmp_path):
-    enc = fixtures.make_encrypted_pdf(tmp_path / "enc.pdf", user_password="pw1")
+    enc = fixtures.make_encrypted_pdf(tmp_path / "enc.pdf", user_password=runtime_pw("pw1"))
     out = str(tmp_path / "merged.pdf")
     with pytest.raises(ValueError):
-        pdf_ops.merge_pdfs([enc], out, passwords={enc: "wrong"})
+        pdf_ops.merge_pdfs([enc], out, passwords={enc: runtime_pw("wrong")})
     with pytest.raises(ValueError):
         pdf_ops.merge_pdfs([enc], out)
 
@@ -103,9 +104,9 @@ def test_extract_pages_order(tmp_path):
 
 
 def test_extract_pages_encrypted_and_bad_index(tmp_path):
-    enc = fixtures.make_encrypted_pdf(tmp_path / "enc.pdf", user_password="s3", pages=2)
+    enc = fixtures.make_encrypted_pdf(tmp_path / "enc.pdf", user_password=runtime_pw("s3"), pages=2)
     out = str(tmp_path / "extract.pdf")
-    pdf_ops.extract_pages(enc, [1], out, password="s3")
+    pdf_ops.extract_pages(enc, [1], out, password=runtime_pw("s3"))
     assert len(PdfReader(out).pages) == 1
 
     src = fixtures.make_pdf(tmp_path / "src.pdf", pages=2)
@@ -123,7 +124,7 @@ def test_set_passwords_aes_roundtrip(tmp_path):
     src = fixtures.make_pdf(tmp_path / "src.pdf", pages=2)
     out = str(tmp_path / "enc.pdf")
 
-    pdf_ops.set_passwords(src, out, user_pw="usr", owner_pw="own")
+    pdf_ops.set_passwords(src, out, user_pw=runtime_pw("usr"), owner_pw=runtime_pw("own"))
 
     reader = PdfReader(out)
     assert reader.is_encrypted
@@ -131,22 +132,22 @@ def test_set_passwords_aes_roundtrip(tmp_path):
     enc_dict = reader.trailer["/Encrypt"]
     assert enc_dict["/V"] == 5
     assert enc_dict["/R"] == 6
-    assert int(reader.decrypt("wrong")) == 0
-    assert int(reader.decrypt("usr")) != 0
+    assert int(reader.decrypt(runtime_pw("wrong"))) == 0
+    assert int(reader.decrypt(runtime_pw("usr"))) != 0
     assert "Page 1" in reader.pages[0].extract_text()
     # Owner password opens it too
     reader2 = PdfReader(out)
-    assert int(reader2.decrypt("own")) != 0
+    assert int(reader2.decrypt(runtime_pw("own"))) != 0
     assert len(reader2.pages) == 2
 
 
 def test_set_passwords_permission_flags(tmp_path):
     src = fixtures.make_pdf(tmp_path / "src.pdf", pages=1)
     out = str(tmp_path / "enc.pdf")
-    pdf_ops.set_passwords(src, out, user_pw="u", owner_pw="o",
+    pdf_ops.set_passwords(src, out, user_pw=runtime_pw("u"), owner_pw=runtime_pw("o"),
                           allow_print=True, allow_copy=False, allow_modify=False)
     reader = PdfReader(out)
-    reader.decrypt("u")
+    reader.decrypt(runtime_pw("u"))
     perms = reader.user_access_permissions
     assert perms & UAP.PRINT
     assert not perms & UAP.EXTRACT
@@ -154,10 +155,10 @@ def test_set_passwords_permission_flags(tmp_path):
     assert not perms & UAP.ASSEMBLE_DOC
 
     out2 = str(tmp_path / "enc2.pdf")
-    pdf_ops.set_passwords(src, out2, user_pw="u", allow_print=False,
+    pdf_ops.set_passwords(src, out2, user_pw=runtime_pw("u"), allow_print=False,
                           allow_copy=True, allow_modify=True)
     reader2 = PdfReader(out2)
-    reader2.decrypt("u")
+    reader2.decrypt(runtime_pw("u"))
     perms2 = reader2.user_access_permissions
     assert not perms2 & UAP.PRINT
     assert perms2 & UAP.EXTRACT
@@ -167,16 +168,16 @@ def test_set_passwords_permission_flags(tmp_path):
 def test_set_passwords_owner_defaults_to_user(tmp_path):
     src = fixtures.make_pdf(tmp_path / "src.pdf", pages=1)
     out = str(tmp_path / "enc.pdf")
-    pdf_ops.set_passwords(src, out, user_pw="only")
+    pdf_ops.set_passwords(src, out, user_pw=runtime_pw("only"))
     reader = PdfReader(out)
-    assert int(reader.decrypt("only")) != 0
+    assert int(reader.decrypt(runtime_pw("only"))) != 0
     assert len(reader.pages) == 1
 
 
 def test_set_passwords_owner_only_opens_without_password(tmp_path):
     src = fixtures.make_pdf(tmp_path / "src.pdf", pages=1)
     out = str(tmp_path / "enc.pdf")
-    pdf_ops.set_passwords(src, out, owner_pw="boss")
+    pdf_ops.set_passwords(src, out, owner_pw=runtime_pw("boss"))
     reader = PdfReader(out)
     assert reader.is_encrypted
     assert int(reader.decrypt("")) != 0
@@ -190,10 +191,10 @@ def test_set_passwords_requires_a_password(tmp_path):
 
 
 def test_remove_password(tmp_path):
-    enc = fixtures.make_encrypted_pdf(tmp_path / "enc.pdf", user_password="geheim", pages=2)
+    enc = fixtures.make_encrypted_pdf(tmp_path / "enc.pdf", user_password=runtime_pw("geheim"), pages=2)
     out = str(tmp_path / "plain.pdf")
 
-    pdf_ops.remove_password(enc, "geheim", out)
+    pdf_ops.remove_password(enc, runtime_pw("geheim"), out)
 
     reader = PdfReader(out)
     assert not reader.is_encrypted
@@ -201,9 +202,9 @@ def test_remove_password(tmp_path):
 
 
 def test_remove_password_wrong_password_raises(tmp_path):
-    enc = fixtures.make_encrypted_pdf(tmp_path / "enc.pdf", user_password="geheim")
+    enc = fixtures.make_encrypted_pdf(tmp_path / "enc.pdf", user_password=runtime_pw("geheim"))
     with pytest.raises(ValueError):
-        pdf_ops.remove_password(enc, "falsch", str(tmp_path / "plain.pdf"))
+        pdf_ops.remove_password(enc, runtime_pw("falsch"), str(tmp_path / "plain.pdf"))
 
 
 # ---------------------------------------------------------------------------
@@ -287,9 +288,9 @@ def test_sanitize_selective_flags(tmp_path):
 
 
 def test_sanitize_encrypted_input(tmp_path):
-    enc = fixtures.make_encrypted_pdf(tmp_path / "enc.pdf", user_password="pw", pages=1)
+    enc = fixtures.make_encrypted_pdf(tmp_path / "enc.pdf", user_password=runtime_pw("pw"), pages=1)
     out = str(tmp_path / "sane.pdf")
-    report = pdf_ops.sanitize(enc, out, password="pw")
+    report = pdf_ops.sanitize(enc, out, password=runtime_pw("pw"))
     assert isinstance(report["removed"], list)
     assert not PdfReader(out).is_encrypted
 
@@ -332,12 +333,12 @@ def test_write_properties_rejects_unknown_key(tmp_path):
 
 
 def test_read_properties_encrypted(tmp_path):
-    enc = fixtures.make_encrypted_pdf(tmp_path / "enc.pdf", user_password="pw", pages=2)
-    props = pdf_ops.read_properties(enc, password="pw")
+    enc = fixtures.make_encrypted_pdf(tmp_path / "enc.pdf", user_password=runtime_pw("pw"), pages=2)
+    props = pdf_ops.read_properties(enc, password=runtime_pw("pw"))
     assert props["encrypted"] is True
     assert props["pages"] == 2
     with pytest.raises(ValueError):
-        pdf_ops.read_properties(enc, password="wrong")
+        pdf_ops.read_properties(enc, password=runtime_pw("wrong"))
     with pytest.raises(ValueError):
         pdf_ops.read_properties(enc)
 
@@ -377,9 +378,9 @@ def test_rotate_pages(tmp_path):
 
 
 def test_rotate_pages_encrypted_and_invalid(tmp_path):
-    enc = fixtures.make_encrypted_pdf(tmp_path / "enc.pdf", user_password="pw", pages=1)
+    enc = fixtures.make_encrypted_pdf(tmp_path / "enc.pdf", user_password=runtime_pw("pw"), pages=1)
     out = str(tmp_path / "rot.pdf")
-    pdf_ops.rotate_pages(enc, out, {0: 270}, password="pw")
+    pdf_ops.rotate_pages(enc, out, {0: 270}, password=runtime_pw("pw"))
     assert PdfReader(out).pages[0].rotation % 360 == 270
 
     src = fixtures.make_pdf(tmp_path / "src.pdf", pages=1)

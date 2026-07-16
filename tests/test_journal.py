@@ -7,7 +7,7 @@ compared: page count, per-page rotation and effective page dimensions.
 
 License: GPL-3.0
 (c) 2024 - 2026 Björn Seipel
-Acrobat-suite additions (c) 2026 CoverUP contributors
+(c) 2026 WorkOnward Read contributors
 """
 
 import json
@@ -19,6 +19,7 @@ from PIL import Image
 from pypdf import PdfReader, PdfWriter
 
 from workonward_read.pdf_ops import PT_PER_PX, PX_PER_PT, PageOpsJournal, apply_journal
+from fixtures import runtime_pw
 
 
 def px(pt):
@@ -252,17 +253,17 @@ def test_apply_journal_empty_copies_input(tmp_path):
 
 
 def test_apply_journal_encrypted_input(tmp_path):
-    enc = fixtures.make_encrypted_pdf(tmp_path / "enc.pdf", user_password="pw", pages=3)
+    enc = fixtures.make_encrypted_pdf(tmp_path / "enc.pdf", user_password=runtime_pw("pw"), pages=3)
     out = str(tmp_path / "out.pdf")
     journal = PageOpsJournal()
     journal.record(("delete", [1]))
     journal.record(("rotate", {0: 90}))
-    apply_journal(enc, journal, out, password="pw")
+    apply_journal(enc, journal, out, password=runtime_pw("pw"))
     reader = PdfReader(out)
     assert len(reader.pages) == 2
     assert reader.pages[0].rotation % 360 == 90
     with pytest.raises(ValueError):
-        apply_journal(enc, journal, out, password="nope")
+        apply_journal(enc, journal, out, password=runtime_pw("nope"))
 
 
 # ---------------------------------------------------------------------------

@@ -1,7 +1,7 @@
 # WorkOnward Read AppImage recipe — built from LOCAL source (this checkout),
 # not a git clone of the upstream repository. Run from the repo root:
 #     appimage-builder --recipe appimage/AppImageBuilder.yml
-# WorkOnward Read is based on CoverUP by Björn Seipel (digidigital), GPL-3.0.
+# WorkOnward Read is based on open-source software by Björn Seipel (digidigital), GPL-3.0.
 version: 1
 
 AppDir:
@@ -57,7 +57,7 @@ AppDir:
     id: org.workonward.read
     name: WorkOnward Read
     icon: workonward-read
-    version: 0.5.1
+    version: 0.5.2
     exec: usr/bin/workonward-read
     exec_args: $@
 

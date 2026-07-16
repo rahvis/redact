@@ -11,7 +11,7 @@ original image data.
 
 Licensed under GPL-3.0
 (c) 2024 - 2026 Björn Seipel
-Acrobat-suite additions (c) 2026 CoverUP contributors
+(c) 2026 WorkOnward Read contributors
 """
 
 from workonward_read.dialogs import annotate as annotate_dialogs

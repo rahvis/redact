@@ -1,17 +1,17 @@
 # WorkOnward Read Web — Secure PDF Redaction
 
-A full-stack web version of [WorkOnward Read](../README.md) (based on CoverUP by Björn Seipel, GPL-3.0). Upload a PDF from your
+A full-stack web version of [WorkOnward Read](../README.md) (based on open-source software by Björn Seipel, GPL-3.0). Upload a PDF from your
 computer, drag black or white bars over sensitive content (like Adobe Acrobat's
 "Mark for Redaction"), and download a redacted PDF where the covered content is
 **permanently removed** — not just hidden behind a box.
 
-It reuses the desktop app's proven redaction model (inherited from CoverUP): every page is **rasterized to an
+It reuses the desktop app's proven redaction model: every page is **rasterized to an
 image**, the bars are **painted as solid pixels** onto that image, and a brand
 new PDF is rebuilt from the images with **no text layer**. Covered content
 cannot be recovered by copy/paste, `pdftotext`, "remove the overlay", or by
 OCR-ing the redacted area.
 
-![toolbar + redaction bar over a page](../Screenshots/CoverUP_screenshot.png)
+![toolbar + redaction bar over a page](../Screenshots/Screenshot.png)
 
 ## Run it (one URL)
 

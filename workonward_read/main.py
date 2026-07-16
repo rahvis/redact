@@ -17,7 +17,7 @@ window it arrives on. Non-modal secondary windows register a handler in
 
 Licensed under GPL-3.0
 (c) 2024 - 2026 Björn Seipel
-Acrobat-suite additions (c) 2026 CoverUP contributors
+(c) 2026 WorkOnward Read contributors
 """
 
 import os
@@ -155,7 +155,8 @@ def main():
     app_icon = create_app_icon(fontpath)
     state.icons = create_icons(fontpath)
 
-    # Check for / create datadir (migrates old CoverUP workfiles on first run)
+    # Check for / create datadir (migrates workfiles from the previous
+    # product's data directory on first run)
     datadir = get_default_datadir()
 
     # Initialize workfile manager

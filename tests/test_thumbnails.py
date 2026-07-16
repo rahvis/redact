@@ -5,7 +5,7 @@ recording updates, PNG caching, the >500-page skip, click-event routing
 
 Licensed under GPL-3.0
 (c) 2024 - 2026 Björn Seipel
-Acrobat-suite additions (c) 2026 CoverUP contributors
+(c) 2026 WorkOnward Read contributors
 """
 
 import fixtures  # noqa: F401  (path setup / consistency with other suites)

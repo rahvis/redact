@@ -3,7 +3,7 @@ WorkOnward Read - Read this before your first launch
 
 Thanks for downloading WorkOnward Read!
 
-WorkOnward Read is based on CoverUP by Björn Seipel (digidigital), GPL-3.0.
+WorkOnward Read is based on open-source software by Björn Seipel (digidigital), GPL-3.0.
 
 INSTALL
 -------
@@ -15,8 +15,8 @@ FIRST LAUNCH ("app can't be opened" / "unidentified developer")
 WorkOnward Read is free, open-source software (GPL-3.0). We do not have a
 paid Apple Developer account, so the app is not notarized by Apple. macOS
 Gatekeeper will therefore warn you the first time you open it. The source
-code is public if you want to verify what you are running (the original
-CoverUP project lives at https://github.com/digidigital/CoverUP).
+code is public if you want to verify what you are running:
+https://github.com/rahvis/redact
 
 To open the app the first time:
 
@@ -53,4 +53,4 @@ Every GitHub release includes a SHA256SUMS.txt file. Compare it against:
 QUESTIONS?
 ----------
 Website: https://workonward.org
-Upstream project (CoverUP): https://github.com/digidigital/CoverUP
+Source code: https://github.com/rahvis/redact

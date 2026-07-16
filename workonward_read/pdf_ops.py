@@ -18,7 +18,7 @@ PDF y-axis is flipped (``y_pt = page_height_pt - y_px * 72/200``).
 
 License: GPL-3.0
 (c) 2024 - 2026 Björn Seipel
-Acrobat-suite additions (c) 2026 CoverUP contributors
+(c) 2026 WorkOnward Read contributors
 """
 
 import os

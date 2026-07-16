@@ -8,7 +8,7 @@ The full ``load_path`` flow is exercised with a FakeWindow/FakeGraph shim —
 no real sg.Window is ever created.
 
 License: GPL-3.0
-(c) 2026 CoverUP contributors
+(c) 2026 WorkOnward Read contributors
 """
 
 import pytest

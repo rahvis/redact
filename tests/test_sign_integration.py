@@ -6,13 +6,14 @@ tests/test_signing.py) — no binary fixtures, no real windows.
 
 License: GPL-3.0
 (c) 2024 - 2026 Björn Seipel
-Acrobat-suite additions (c) 2026 CoverUP contributors
+(c) 2026 WorkOnward Read contributors
 """
 
 import os
 from datetime import datetime, timedelta, timezone
 
 import fixtures
+from fixtures import runtime_pw
 import pytest
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
@@ -27,7 +28,7 @@ from workonward_read.handlers import sign as sign_handlers
 from workonward_read.state import AppState
 
 TEST_CN = 'WorkOnward Read Sign-Group Signer'
-P12_PASSWORD = 'test-pass'
+P12_PASSWORD = runtime_pw('p12')
 
 
 def _make_credentials(tmp_path, cn=TEST_CN, password=P12_PASSWORD.encode()):
@@ -282,7 +283,7 @@ def test_cert_sign_core_wrong_p12_password_returns_marker(tmp_path, credentials)
             'input': src,
             'output': out,
             'p12_path': p12_path,
-            'p12_password': 'totally-wrong',
+            'p12_password': runtime_pw('totally-wrong'),
             'visible_page': None,
         }
     )
@@ -322,7 +323,7 @@ def test_cert_sign_wrapper_reprompts_on_bad_password(tmp_path, credentials,
         if len(dialog_calls) == 1:
             return {
                 'input': src, 'output': out, 'p12_path': p12_path,
-                'p12_password': 'wrong', 'reason': None, 'location': None,
+                'p12_password': runtime_pw('wrong'), 'reason': None, 'location': None,
                 'visible_page': None,
             }
         return None  # user cancels the re-prompt

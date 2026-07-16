@@ -4,8 +4,8 @@ Tests for workonward_read.ocr — Tesseract OCR producing searchable PDFs.
 OCR tests are skipped when no tesseract binary is installed; the input
 validation tests run everywhere.
 
-CoverUP is licensed under GPL-3.0. (c) 2024 - 2026 Björn Seipel
-Acrobat-suite additions (c) 2026 CoverUP contributors
+Licensed under GPL-3.0. (c) 2024 - 2026 Björn Seipel
+(c) 2026 WorkOnward Read contributors
 """
 
 import io
@@ -19,6 +19,7 @@ from pypdf import PdfReader, PdfWriter
 
 import fixtures  # noqa: F401 (path added by conftest)
 from workonward_read import ocr
+from fixtures import runtime_pw
 
 TESSERACT = ocr.find_tesseract()
 needs_tesseract = pytest.mark.skipif(
@@ -201,17 +202,17 @@ def test_make_searchable_pdf_encrypted_input(tmp_path):
 
     writer = PdfWriter()
     writer.append(PdfReader(plain))
-    writer.encrypt(user_password="secret", algorithm="AES-256")
+    writer.encrypt(user_password=runtime_pw("secret"), algorithm="AES-256")
     with open(encrypted, "wb") as fh:
         writer.write(fh)
 
     out = str(tmp_path / "searchable.pdf")
-    ocr.make_searchable_pdf(encrypted, out, password="secret")
+    ocr.make_searchable_pdf(encrypted, out, password=runtime_pw("secret"))
     assert_contains_ocr_words(extract_text_pdfium(out))
 
     with pytest.raises(ValueError):
         ocr.make_searchable_pdf(encrypted, str(tmp_path / "x.pdf"),
-                                password="wrong")
+                                password=runtime_pw("wrong"))
 
 
 @needs_tesseract

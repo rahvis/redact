@@ -78,7 +78,7 @@ Images are tagged with the commit SHA. To pin a previous version on the droplet:
 
 ```bash
 ssh root@redact.gitdate.ink
-cd /opt/coverup   # deploy directory on the droplet (kept from the original setup)
+cd /opt/workonward-read   # deploy directory on the droplet
 WORKONWARD_IMAGE=ghcr.io/rahvis/workonward-read-web:<old-sha> \
   docker compose -f docker-compose.prod.yml up -d
 ```

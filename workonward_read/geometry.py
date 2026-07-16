@@ -17,7 +17,7 @@ Business module: never imports FreeSimpleGUI or tkinter and contains no
 user-visible strings.
 
 License: GPL-3.0
-(c) 2026 CoverUP contributors
+(c) 2026 WorkOnward Read contributors
 """
 
 from workonward_read import annotations as annotations_engine

@@ -4,12 +4,13 @@ Form fixtures are synthesized at test time — no binary fixtures.
 
 License: GPL-3.0
 (c) 2024 - 2026 Björn Seipel
-Acrobat-suite additions (c) 2026 CoverUP contributors
+(c) 2026 WorkOnward Read contributors
 """
 
 import io
 
 import fixtures
+from fixtures import runtime_pw
 import pytest
 from pypdf import PdfReader, PdfWriter
 
@@ -211,14 +212,14 @@ def test_checkbox_bool_fill(tmp_path):
 
 def test_encrypted_form_password_handling(tmp_path):
     plain = fixtures.make_form_pdf(tmp_path / "form.pdf")
-    enc = _encrypt(plain, tmp_path / "enc.pdf", "secret")
+    enc = _encrypt(plain, tmp_path / "enc.pdf", runtime_pw("secret"))
 
     with pytest.raises(ValueError):
         forms.list_fields(enc)
 
-    listed = forms.list_fields(enc, password="secret")
+    listed = forms.list_fields(enc, password=runtime_pw("secret"))
     assert {f["name"] for f in listed} == {"name", "city"}
 
     out = str(tmp_path / "filled.pdf")
-    forms.fill_fields(enc, out, {"name": "Bob"}, password="secret")
+    forms.fill_fields(enc, out, {"name": "Bob"}, password=runtime_pw("secret"))
     assert PdfReader(out).get_fields()["name"].value == "Bob"
