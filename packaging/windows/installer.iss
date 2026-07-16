@@ -1,7 +1,7 @@
 ; Inno Setup script for WorkOnward Read (Windows x64)
 ;
 ; Build (from the repo root, after PyInstaller has produced dist\WorkOnwardRead\):
-;   ISCC.exe packaging\windows\installer.iss /DWORKONWARD_VERSION=0.5.0
+;   ISCC.exe packaging\windows\installer.iss /DWORKONWARD_VERSION=0.5.1
 ;
 ; If /DWORKONWARD_VERSION is not passed, the WORKONWARD_VERSION environment
 ; variable is used, falling back to 0.0.0 (which should never ship).
@@ -44,6 +44,7 @@ ArchitecturesInstallIn64BitMode=x64compatible
 PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=dialog
 LicenseFile=..\..\LICENSE
+OutputDir=..\..\Output
 OutputBaseFilename=WorkOnwardRead-Setup-{#MyAppVersion}-x64
 SetupIconFile=..\..\WorkOnwardRead.ico
 UninstallDisplayIcon={app}\{#MyAppExeName}
