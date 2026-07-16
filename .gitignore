@@ -29,6 +29,7 @@ MANIFEST
 # PyInstaller
 *.manifest
 *.spec
+!packaging/coverup.spec
 
 # Installer logs
 pip-log.txt

@@ -55,6 +55,23 @@ pip install coverup-pdf
 
 [Windows Installer and other download options](https://github.com/digidigital/CoverUP/releases/latest)
 
+## Downloads (Windows & macOS)
+
+Each [GitHub release](https://github.com/digidigital/CoverUP/releases/latest) ships three desktop artifacts:
+
+- **`CoverUP-Setup-<version>-x64.exe`** — Windows 64-bit installer (per-user by default, no admin required). Silent install: `/VERYSILENT /SUPPRESSMSGBOXES /NORESTART`
+- **`CoverUP-<version>-macOS-arm64.dmg`** — macOS on Apple Silicon (M1 and newer)
+- **`CoverUP-<version>-macOS-x86_64.dmg`** — macOS on Intel processors
+
+**First-launch warnings** (the app is open source and not code-signed with a paid certificate):
+
+- **Windows SmartScreen:** if you see "Windows protected your PC", click **More info → Run anyway**.
+- **macOS Gatekeeper:** right-click the app and choose **Open**, then **Open** again. On macOS 15+ you may instead need **System Settings → Privacy & Security → Open Anyway**. Full instructions are included in the DMG (`README-Open-Me-First.txt`).
+
+**Verify your download:** every release includes a `SHA256SUMS.txt`; compare it with `shasum -a 256 <file>` (macOS) or `CertUtil -hashfile <file> SHA256` (Windows).
+
+**Build it yourself:** see [`packaging/README.md`](packaging/README.md) for local Windows/macOS build instructions.
+
 ## Usage
 
 ### Graphical Interface
