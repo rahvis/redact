@@ -1,0 +1,12 @@
+# Build-time constraints shared by all desktop builds (Windows + macOS).
+#
+# Usage:
+#   pip install . -c packaging/constraints.txt pyinstaller --only-binary :all:
+#
+# Only floors here — runtime dependency versions are owned by pyproject.toml.
+# Pure-Python deps are intentionally NOT hard-pinned so security fixes flow in.
+
+# PyInstaller 6.11+ is required for reliable Python 3.13 support.
+pyinstaller>=6.11
+# Community hooks (Pillow, cryptography, lxml, ...). Keep reasonably fresh.
+pyinstaller-hooks-contrib>=2024.10

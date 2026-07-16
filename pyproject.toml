@@ -3,9 +3,9 @@ requires = ["setuptools>=61.0,<80", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "coverup-pdf"
-version = "0.4.2"
-description = "A tool for redacting PDF files and images"
+name = "workonward-read"
+version = "0.5.2"
+description = "WorkOnward Read - a tool for redacting PDF files and images"
 readme = "README.md"
 license = {text = "GPL-3.0"}
 authors = [
@@ -26,6 +26,7 @@ classifiers = [
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Multimedia :: Graphics :: Editors",
     "Topic :: Office/Business",
     "Topic :: Security",
@@ -37,6 +38,12 @@ dependencies = [
     "Pillow>=10.0.0",
     "fpdf2>=2.7.0",
     "appdirs>=1.4.4",
+    "pypdf>=5.1.0",
+    "cryptography>=42.0.0",
+    "pyhanko>=0.25.0",
+    "pdfminer.six>=20240706",
+    "python-docx>=1.1.0",
+    "pytesseract>=0.3.10",
 ]
 
 [project.optional-dependencies]
@@ -46,24 +53,25 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://coverup.digidigital.de"
-Repository = "https://github.com/digidigital/CoverUP"
-Issues = "https://github.com/digidigital/CoverUP/issues"
+Homepage = "https://workonward.org"
+Repository = "https://github.com/rahvis/redact"
+Issues = "https://github.com/rahvis/redact/issues"
+Upstream = "https://digidigital.de"
 
 [project.scripts]
-coverup = "coverup.main:main"
+workonward-read = "workonward_read.main:main"
 
 [project.gui-scripts]
-coverup-gui = "coverup.main:main"
+workonward-read-gui = "workonward_read.main:main"
 
 
 [project.entry-points.pyinstaller40]
-hook-dirs = "coverup.__pyinstaller:get_hook_dirs"
+hook-dirs = "workonward_read.__pyinstaller:get_hook_dirs"
 
 
 [tool.setuptools]
-packages = ["coverup", "coverup.pyinstaller_hooks"]
+packages = ["workonward_read", "workonward_read.dialogs", "workonward_read.handlers", "workonward_read.pyinstaller_hooks"]
 
 [tool.setuptools.package-data]
-coverup = ["fonts/*.ttf", "fonts/*.otf"]
-"coverup.pyinstaller_hooks" = ["*.py"]
+workonward_read = ["fonts/*.ttf", "fonts/*.otf", "assets/*.png"]
+"workonward_read.pyinstaller_hooks" = ["*.py"]

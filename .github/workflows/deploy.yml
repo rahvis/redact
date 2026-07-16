@@ -1,4 +1,4 @@
-name: Deploy CoverUP Web
+name: Deploy WorkOnward Read Web
 
 # Build the web app image and deploy it to the DigitalOcean droplet as a Docker
 # container whenever the web app (or this workflow) changes on main.
@@ -23,11 +23,11 @@ on:
   workflow_dispatch: {}   # allow manual "Run workflow"
 
 concurrency:
-  group: deploy-coverup-web
+  group: deploy-workonward-read-web
   cancel-in-progress: false
 
 env:
-  IMAGE_NAME: coverup-web
+  IMAGE_NAME: workonward-read-web
 
 jobs:
   build-and-push:
@@ -82,7 +82,7 @@ jobs:
           username: ${{ secrets.DROPLET_USER }}
           key: ${{ secrets.DROPLET_SSH_KEY }}
           source: "web/deploy/docker-compose.prod.yml,web/deploy/Caddyfile"
-          target: "/opt/coverup"
+          target: "/opt/workonward-read"
           strip_components: 2
 
       - name: Deploy on the droplet
@@ -116,10 +116,17 @@ jobs:
               ufw allow 443/tcp || true
             fi
 
-            # 3. Pull the freshly built image and (re)start the stack.
-            cd /opt/coverup
+            # 3. One-time migration from the legacy deploy directory: stop the
+            #    old stack so it frees ports 80/443 for the new one (the new
+            #    stack re-issues TLS certs on first start).
+            if [ -f /opt/coverup/docker-compose.prod.yml ]; then
+              docker compose -f /opt/coverup/docker-compose.prod.yml down --remove-orphans || true
+            fi
+
+            # 4. Pull the freshly built image and (re)start the stack.
+            cd /opt/workonward-read
             echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
-            export COVERUP_IMAGE="${IMAGE}:latest"
+            export WORKONWARD_IMAGE="${IMAGE}:latest"
             export SITE_DOMAIN="${SITE_DOMAIN}"
             docker compose -f docker-compose.prod.yml pull
             docker compose -f docker-compose.prod.yml up -d --remove-orphans

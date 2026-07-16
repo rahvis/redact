@@ -29,6 +29,7 @@ MANIFEST
 # PyInstaller
 *.manifest
 *.spec
+!packaging/workonward_read.spec
 
 # Installer logs
 pip-log.txt
@@ -80,3 +81,15 @@ builddir/
 parts/
 prime/
 stage/
+
+# --- Secret material (never commit credentials, keys, or certificates) ---
+.env
+.env.*
+*.env
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+secrets/
+*.secret

@@ -1,0 +1,13 @@
+# Extra constraints for macOS Intel (x86_64) builds ONLY.
+#
+# cryptography >= 49 dropped Intel macOS wheels (the project now ships only
+# arm64 macOS wheels), so an unconstrained install on macos-15-intel would
+# fall back to building from an sdist — which fails under --only-binary :all:
+# and would otherwise require a Rust toolchain in CI. Pin to the last major
+# series that still publishes x86_64 macOS wheels.
+#
+# Usage (in addition to the shared constraints):
+#   pip install . -c packaging/constraints.txt -c packaging/constraints-macos-x86_64.txt ...
+#
+# Remove this file when the Intel build is retired.
+cryptography>=48,<49

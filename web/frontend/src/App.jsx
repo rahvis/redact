@@ -180,7 +180,7 @@ export default function App() {
       {status && <div className={`status status-${status.type}`}>{status.msg}</div>}
       <div className="doc">{pages}</div>
       <footer className="footer">
-        Files are processed in memory by your self-hosted CoverUP instance and are never
+        Files are processed in memory by your self-hosted WorkOnward Read instance and are never
         stored. Redaction flattens each page to an image and rebuilds the PDF, so the
         covered content — and the original text layer — cannot be recovered.
       </footer>
@@ -192,8 +192,8 @@ function Header() {
   return (
     <header className="header">
       <div className="brand">
-        <span className="brand-mark">▧</span>
-        <span className="brand-name">CoverUP</span>
+        <img className="brand-logo" src="/favicon.svg" alt="" width="22" height="22" />
+        <span className="brand-name">WorkOnward Read</span>
         <span className="brand-tag">Secure PDF Redaction</span>
       </div>
     </header>

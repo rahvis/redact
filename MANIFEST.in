@@ -1,8 +1,11 @@
 # Include font files
-recursive-include coverup/fonts *.ttf *.otf
+recursive-include workonward_read/fonts *.ttf *.otf
+
+# Include app icon assets
+recursive-include workonward_read/assets *.png
 
 # Include PyInstaller hooks
-recursive-include coverup/pyinstaller_hooks *.py
+recursive-include workonward_read/pyinstaller_hooks *.py
 
 # Include documentation
 include README.md

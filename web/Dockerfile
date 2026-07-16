@@ -1,4 +1,4 @@
-# CoverUP Web — full-stack PDF redaction, one image, one URL.
+# WorkOnward Read Web — full-stack PDF redaction, one image, one URL.
 #
 # Stage 1 builds the React/Vite frontend to static assets.
 # Stage 2 is a slim Python runtime that runs the FastAPI redaction API AND

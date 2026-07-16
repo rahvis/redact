@@ -1,6 +1,6 @@
-# CoverUP-in-the-browser
+# WorkOnward Read-in-the-browser
 #
-# CoverUP is a Tkinter (FreeSimpleGUI) DESKTOP app with no web server of its own.
+# WorkOnward Read is a Tkinter (FreeSimpleGUI) DESKTOP app with no web server of its own.
 # This image runs the real GUI on a headless virtual X display (Xvfb) and streams
 # it to the browser with x11vnc + noVNC, so the app is reachable at a plain URL.
 #
@@ -9,7 +9,7 @@
 #   Screen -> VNC   : x11vnc  (:5900)
 #   VNC   -> Browser: websockify + noVNC (:6080)  <-- open this in your browser
 #
-# Build context is the repo root:  docker build -f docker/Dockerfile -t coverup-web .
+# Build context is the repo root:  docker build -f docker/Dockerfile -t workonward-read-desktop .
 
 FROM ubuntu:22.04
 
@@ -39,8 +39,8 @@ RUN ln -sf /usr/share/novnc/vnc.html /usr/share/novnc/index.html
 WORKDIR /app
 COPY . /app
 
-# Install CoverUP + its Python dependencies (FreeSimpleGUI, pypdfium2, Pillow,
-# fpdf2, appdirs) from the project metadata.
+# Install WorkOnward Read + its Python dependencies (FreeSimpleGUI, pypdfium2,
+# Pillow, fpdf2, appdirs) from the project metadata.
 RUN python3 -m pip install --no-cache-dir --upgrade pip \
     && python3 -m pip install --no-cache-dir .
 

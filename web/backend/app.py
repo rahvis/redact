@@ -1,5 +1,5 @@
 """
-CoverUP Web — FastAPI backend.
+WorkOnward Read Web — FastAPI backend.
 
 Serves the redaction API and (in production) the built React frontend from a
 single origin, so the whole product lives at ONE URL (e.g. http://localhost:8080).
@@ -39,7 +39,7 @@ from redaction import (
 # 200 MB upload ceiling — generous for scanned docs, bounded to avoid OOM.
 MAX_UPLOAD_BYTES = 200 * 1024 * 1024
 
-app = FastAPI(title="CoverUP Web", version="1.0.0")
+app = FastAPI(title="WorkOnward Read Web", version="1.0.0")
 
 # CORS only matters in dev (Vite on :5173 hitting the API on :8080). In the
 # single-container build the frontend is same-origin, so this is a no-op there.
@@ -69,7 +69,7 @@ async def reject_oversized(request: Request, call_next):
 
 @app.get("/api/health")
 def health() -> dict[str, str]:
-    return {"status": "ok", "service": "coverup-web"}
+    return {"status": "ok", "service": "workonward-read-web"}
 
 
 def _parse_regions(raw: str) -> list[Region]:

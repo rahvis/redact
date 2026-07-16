@@ -1,7 +1,7 @@
 """
-Secure PDF redaction engine for CoverUP Web.
+Secure PDF redaction engine for WorkOnward Read Web.
 
-Faithful, stateless port of the desktop CoverUP redaction model:
+Faithful, stateless port of the desktop WorkOnward Read redaction model:
 
     1. Each PDF page is RASTERIZED to a bitmap with pypdfium2. Rasterizing
        destroys the text layer and any invisible/hidden layers — the page
@@ -38,7 +38,7 @@ _PDFIUM_LOCK = threading.Lock()
 
 # Render resolution (DPI). Higher = crisper output, larger file.
 #   high       -> 150 DPI, JPEG q90   (visually faithful)
-#   compressed -> 100 DPI, JPEG q80   (smaller file, CoverUP's "low" mode)
+#   compressed -> 100 DPI, JPEG q80   (smaller file, the desktop app's "low" mode)
 QUALITY_PRESETS = {
     "high": {"dpi": 150, "jpeg_quality": 90},
     "compressed": {"dpi": 100, "jpeg_quality": 80},
@@ -164,8 +164,8 @@ def _redact_locked(pdf_bytes, regions, dpi, jpeg_quality, scale, password) -> by
         grouped = _regions_by_page(regions, page_count)
 
         out = FPDF(unit="pt")
-        out.set_creator("CoverUP Web")
-        out.set_producer("CoverUP Web (pypdfium2 + Pillow + fpdf2)")
+        out.set_creator("WorkOnward Read Web")
+        out.set_producer("WorkOnward Read Web (pypdfium2 + Pillow + fpdf2)")
         # Do NOT copy the source document's metadata/title — start clean.
 
         for i in range(page_count):

@@ -1,13 +1,13 @@
-# Production stack for the droplet: the CoverUP Web app behind a Caddy reverse
+# Production stack for the droplet: the WorkOnward Read Web app behind a Caddy reverse
 # proxy that terminates TLS (automatic Let's Encrypt certs for $SITE_DOMAIN).
 #
-# The GitHub Actions deploy job sets COVERUP_IMAGE and SITE_DOMAIN in the
+# The GitHub Actions deploy job sets WORKONWARD_IMAGE and SITE_DOMAIN in the
 # environment before running `docker compose up`.
 
 services:
-  coverup-web:
-    image: ${COVERUP_IMAGE:-ghcr.io/rahvis/coverup-web:latest}
-    container_name: coverup-web
+  workonward-read-web:
+    image: ${WORKONWARD_IMAGE:-ghcr.io/rahvis/workonward-read-web:latest}
+    container_name: workonward-read-web
     restart: unless-stopped
     # Uploads spool through /tmp during multipart parsing; tmpfs keeps that in
     # RAM so PDFs never touch the droplet's disk.
@@ -26,7 +26,7 @@ services:
     container_name: caddy
     restart: unless-stopped
     depends_on:
-      - coverup-web
+      - workonward-read-web
     ports:
       - "80:80"
       - "443:443"

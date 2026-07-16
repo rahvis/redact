@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 #
-# Boots the display stack, then launches CoverUP into it.
+# Boots the display stack, then launches WorkOnward Read into it.
 # Helper daemons log to /var/log/*.log; the app itself logs to the container's
-# stdout so `docker logs coverup-web` shows any Python errors.
+# stdout so `docker logs workonward-read-desktop` shows any Python errors.
 
 set -u
 
@@ -35,15 +35,15 @@ x11vnc -display "$DISP" -forever -shared -nopw -rfbport "$VNC_PORT" -noxdamage \
 websockify --web=/usr/share/novnc "$WEB_PORT" "localhost:${VNC_PORT}" \
     >/var/log/websockify.log 2>&1 &
 
-echo "[start] CoverUP is now reachable at:"
+echo "[start] WorkOnward Read is now reachable at:"
 echo "        http://localhost:${WEB_PORT}/vnc.html?autoconnect=true&resize=scale"
 
 # 5. Run the app. Restart it if the window is closed so the URL stays live.
 #    File dialogs default to /files (mount a host folder there to import/export).
 cd /files 2>/dev/null || cd /app
 while true; do
-    echo "[start] launching CoverUP..."
-    coverup "$@"
-    echo "[start] CoverUP exited; restarting in 1s (close the browser tab to stop using it)"
+    echo "[start] launching WorkOnward Read..."
+    workonward-read "$@"
+    echo "[start] WorkOnward Read exited; restarting in 1s (close the browser tab to stop using it)"
     sleep 1
 done

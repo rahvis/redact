@@ -1,0 +1,158 @@
+name: Release Desktop Apps
+
+# Build the Windows installer and per-arch macOS DMGs, then attach them to a
+# draft GitHub release. Triggered by pushing a v* tag (e.g. v0.4.2) or
+# manually via workflow_dispatch (which skips the tag/version gate).
+#
+# Design notes (see packaging/README.md):
+#   - Python 3.13 everywhere; every build gates on Tcl/Tk 8.6 (Tcl 9 breaks
+#     FreeSimpleGUI, see docs/tcl9-migration.md).
+#   - pip installs use --only-binary :all: so a missing wheel fails loudly.
+#   - No universal2 macOS build (pypdfium2/Pillow ship no universal2 wheels):
+#     arm64 builds on macos-14, x86_64 on macos-15-intel.
+#   - The release is created as a DRAFT; publish manually after checking.
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: pip
+
+      - name: Install system packages (xvfb for headless tkinter)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb python3-tk
+
+      - name: Install project + test deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e . pytest
+
+      - name: Run tests (headless)
+        run: xvfb-run -a pytest tests/ -q
+
+      - name: Verify tag matches package and pyproject versions
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          PKG_VERSION="$(python -c 'import workonward_read; print(workonward_read.__version__)')"
+          PYPROJECT_VERSION="$(python -c 'import tomllib; print(tomllib.load(open("pyproject.toml","rb"))["project"]["version"])')"
+          echo "tag=$TAG_VERSION package=$PKG_VERSION pyproject=$PYPROJECT_VERSION"
+          if [ "$TAG_VERSION" != "$PKG_VERSION" ] || [ "$TAG_VERSION" != "$PYPROJECT_VERSION" ]; then
+            echo "::error::Version mismatch: tag v$TAG_VERSION vs workonward_read.__version__ $PKG_VERSION vs pyproject $PYPROJECT_VERSION"
+            exit 1
+          fi
+
+  build-windows:
+    needs: test
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: pip
+
+      - name: Install project + PyInstaller (wheels only)
+        run: |
+          python -m pip install --upgrade pip
+          pip install --only-binary :all: -c packaging/constraints.txt . pyinstaller
+
+      - name: Gate on Tcl/Tk 8.6
+        run: python -c "import tkinter,sys; v=str(tkinter.Tcl().call('info','patchlevel')); print('Tcl', v); sys.exit(0 if v.startswith('8.6') else 1)"
+
+      - name: Build with PyInstaller
+        run: pyinstaller packaging/workonward_read.spec --noconfirm
+
+      - name: Smoke test frozen exe
+        run: dist\WorkOnwardRead\WorkOnwardRead.exe --version
+        shell: cmd
+
+      - name: Read version
+        id: version
+        shell: bash
+        run: echo "version=$(python -c 'import workonward_read; print(workonward_read.__version__)')" >> "$GITHUB_OUTPUT"
+
+      - name: Build installer (Inno Setup)
+        shell: cmd
+        run: '"C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /DWORKONWARD_VERSION=${{ steps.version.outputs.version }} packaging\windows\installer.iss'
+
+      - name: Smoke test installer (silent install + installed exe)
+        shell: cmd
+        run: |
+          Output\WorkOnwardRead-Setup-${{ steps.version.outputs.version }}-x64.exe /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /DIR="%TEMP%\WorkOnwardRead-smoke"
+          "%TEMP%\WorkOnwardRead-smoke\WorkOnwardRead.exe" --version
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-x64
+          path: Output/*.exe
+          if-no-files-found: error
+
+  build-macos:
+    needs: test
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-14
+            arch: arm64
+          - runner: macos-15-intel
+            arch: x86_64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: pip
+
+      - name: Build WorkOnward Read.app
+        run: PYTHON=$(which python) bash packaging/macos/build_app.sh
+
+      - name: Build DMG
+        run: SKIP_BUILD=1 bash packaging/macos/build_dmg.sh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-${{ matrix.arch }}
+          path: dist/*.dmg
+          if-no-files-found: error
+
+  release:
+    needs: [build-windows, build-macos]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Generate SHA256SUMS.txt
+        run: |
+          cd dist
+          sha256sum * > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Create draft release
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          generate_release_notes: true
+          files: dist/*
