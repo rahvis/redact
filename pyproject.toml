@@ -26,6 +26,7 @@ classifiers = [
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Multimedia :: Graphics :: Editors",
     "Topic :: Office/Business",
     "Topic :: Security",
@@ -37,6 +38,12 @@ dependencies = [
     "Pillow>=10.0.0",
     "fpdf2>=2.7.0",
     "appdirs>=1.4.4",
+    "pypdf>=5.1.0",
+    "cryptography>=42.0.0",
+    "pyhanko>=0.25.0",
+    "pdfminer.six>=20240706",
+    "python-docx>=1.1.0",
+    "pytesseract>=0.3.10",
 ]
 
 [project.optional-dependencies]
