@@ -8,17 +8,17 @@ directory, keyed by an MD5 hash of the original file path.
 Workfile format v2 (see docs/dev-architecture.md):
 
     {"version": 2,
-     "annotations": [[{"id": ..., "kind": "redact",
-                       "props": {"p1": [x, y], "p2": [x, y], "fill": color}}, ...]
-                     per page],
+     "annotations": [[{"id": ..., "kind": ..., "props": {...}}, ...] per page],
      "decorations": {...}, "journal": [...],
      "pages": N, "current_page": n,
      "fill_color": "black", "output_quality": "high"}
 
-Legacy v1 files (a top-level ``"rectangles"`` key) are still loaded and
-migrated transparently. ``load()`` always returns rectangle data in the
-current in-app tuple form ``(p1, p2, fill, None)``. Passwords are never
-persisted.
+Annotation dicts carry the full typed annotation model
+(:mod:`workonward_read.annotations`). Legacy v1 files (a top-level
+``"rectangles"`` key) and early v2 redact-only files are still loaded and
+migrated transparently. ``load()`` returns annotation data as plain dicts
+per page (see ``annotations.from_dict`` for rebuilding Annotation objects).
+Passwords are never persisted.
 
 Licensed under GPL-3.0
 (c) 2024 - 2026 Björn Seipel
@@ -28,12 +28,12 @@ Acrobat-suite additions (c) 2026 CoverUP contributors
 import os
 import json
 import shutil
-import uuid
 
 from appdirs import user_data_dir
 
+from workonward_read import annotations as annotations_engine
 from workonward_read.utils import encode_filepath, delete_oldest_files
-from workonward_read.image_container import export_rectangles
+from workonward_read.image_container import export_annotations
 
 
 def get_default_datadir():
@@ -68,44 +68,54 @@ def get_default_datadir():
     return datadir
 
 
-def _rectangle_to_annotation(rectangle):
+def serialize_journal(journal):
     """
-    Convert a current-form rectangle tuple ``(p1, p2, fill, graph_id)`` into
-    a v2 annotation dict. Constructed inline on purpose — no dependency on
-    workonward_read.annotations, which may not exist yet.
+    Return the persistable ops list for a page-ops journal.
+
+    Accepts a :class:`workonward_read.pdf_ops.PageOpsJournal` (duck-typed via
+    ``to_dict``), an already-serialized ops list, or None/empty (-> ``[]``).
     """
-    return {
-        'id': uuid.uuid4().hex,
-        'kind': 'redact',
-        'props': {
-            'p1': [int(rectangle[0][0]), int(rectangle[0][1])],
-            'p2': [int(rectangle[1][0]), int(rectangle[1][1])],
-            'fill': rectangle[2],
-        },
-    }
+    if journal is None:
+        return []
+    to_dict = getattr(journal, 'to_dict', None)
+    if callable(to_dict):
+        try:
+            return to_dict().get('ops', [])
+        except Exception:
+            return []
+    if isinstance(journal, dict):
+        return list(journal.get('ops', []))
+    return list(journal)
 
 
-def _annotation_to_rectangle(annotation):
-    """
-    Convert a v2 annotation dict back into the current in-app tuple form
-    ``[p1, p2, fill, None]``. Returns None for kinds the redaction view
-    does not render (future annotation kinds).
-    """
-    if annotation.get('kind') != 'redact':
+def _normalize_annotation_dict(data):
+    """Round-trip an annotation dict through the engine: fills in missing
+    ids, deep-copies props and drops any stray keys. Returns None for
+    entries that are not dicts."""
+    if not isinstance(data, dict):
         return None
-    props = annotation.get('props', {})
-    p1 = props.get('p1')
-    p2 = props.get('p2')
-    if p1 is None or p2 is None:
-        return None
-    return [tuple(p1), tuple(p2), props.get('fill', 'black'), None]
+    return annotations_engine.to_dict(annotations_engine.from_dict(data))
+
+
+def _migrate_v1_page(page_rectangles):
+    """Convert one page of v1 rectangle entries ``[p1, p2, fill, graph_id]``
+    into annotation dicts."""
+    migrated = []
+    for rectangle in page_rectangles:
+        try:
+            ann = annotations_engine.migrate_v1_rectangle(
+                (tuple(rectangle[0]), tuple(rectangle[1]), rectangle[2], None))
+            migrated.append(annotations_engine.to_dict(ann))
+        except Exception:
+            continue
+    return migrated
 
 
 class WorkfileManager:
     """
     Manages saving and loading of work sessions.
 
-    Work sessions allow users to continue redacting a document where they
+    Work sessions allow users to continue annotating a document where they
     left off. Session files are stored in the application's data directory
     and are automatically cleaned up when the history limit is exceeded.
 
@@ -141,13 +151,16 @@ class WorkfileManager:
         """
         Save the current work session as a v2 workfile.
 
+        The workfile is deleted instead when there is nothing to persist
+        (no annotations, no decorations, no journal ops).
+
         Args:
-            images: List of ImageContainer objects with rectangle data.
+            images: List of ImageContainer objects with annotation data.
             current_page: Currently displayed page index.
             fill_color: Current fill color ('black' or 'white').
             output_quality: Current quality setting ('high' or 'low').
             decorations: Optional document-level decorations dict.
-            journal: Optional serialized page-ops journal (list).
+            journal: Optional serialized page-ops journal (list of ops).
         """
         if not self.file_path or not self.datadir:
             return
@@ -156,37 +169,39 @@ class WorkfileManager:
             self.delete()
             return
 
-        rectangles = export_rectangles(images)
-        if rectangles is not None:
-            workfile_name = encode_filepath(self.file_path)
-            annotations = [
-                [_rectangle_to_annotation(rectangle) for rectangle in page_rectangles]
-                for page_rectangles in rectangles
-            ]
-            work_data = {
-                'version': 2,
-                'annotations': annotations,
-                'decorations': decorations if decorations is not None else {},
-                'journal': journal if journal is not None else [],
-                'pages': len(images),
-                'current_page': current_page,
-                'fill_color': fill_color,
-                'output_quality': output_quality
-            }
-            try:
-                with open(os.path.join(self.datadir, workfile_name), 'w', encoding='utf-8') as f:
-                    json.dump(work_data, f, ensure_ascii=False, indent=4)
-                delete_oldest_files(self.datadir, self.history_length)
-            except Exception:
-                pass
-        else:
+        decorations = decorations if decorations else {}
+        journal = list(journal) if journal else []
+
+        annotations = export_annotations(images)
+        if annotations is None and not decorations and not journal:
             self.delete()
+            return
+        if annotations is None:
+            annotations = [[] for _ in images]
+
+        workfile_name = encode_filepath(self.file_path)
+        work_data = {
+            'version': 2,
+            'annotations': annotations,
+            'decorations': decorations,
+            'journal': journal,
+            'pages': len(images),
+            'current_page': current_page,
+            'fill_color': fill_color,
+            'output_quality': output_quality
+        }
+        try:
+            with open(os.path.join(self.datadir, workfile_name), 'w', encoding='utf-8') as f:
+                json.dump(work_data, f, ensure_ascii=False, indent=4)
+            delete_oldest_files(self.datadir, self.history_length)
+        except Exception:
+            pass
 
     def delete(self):
         """
         Delete the current workfile.
 
-        Called when the user starts over or when there are no rectangles to save.
+        Called when the user starts over or when there is nothing to save.
         """
         if not self.file_path:
             return
@@ -202,15 +217,16 @@ class WorkfileManager:
         """
         Load work data from the workfile if it exists.
 
-        Accepts both v1 workfiles (top-level 'rectangles') and v2 workfiles
-        (top-level 'annotations'). In both cases the returned dict carries
-        rectangle data in the current in-app tuple form (p1, p2, fill, None).
+        Accepts v1 workfiles (top-level 'rectangles' -> migrated to redact
+        annotations) and v2 workfiles (top-level 'annotations', including
+        early redact-only v2 files). The returned dict always carries
+        annotation data as plain annotation dicts, one list per page.
 
         Returns:
-            dict: Work session data containing 'rectangles', 'pages',
-                  'current_page', 'fill_color' and 'output_quality' (plus
-                  'decorations' and 'journal' for v2 files), or None if no
-                  workfile exists or it cannot be parsed.
+            dict: Work session data containing 'annotations', 'pages',
+                  'current_page', 'fill_color', 'output_quality',
+                  'decorations' and 'journal', or None if no workfile
+                  exists or it cannot be parsed.
         """
         if not self.file_path:
             return None
@@ -224,32 +240,29 @@ class WorkfileManager:
                 work_data = json.load(f)
 
             if work_data.get('version', 1) >= 2 or 'annotations' in work_data:
-                rectangles = []
+                annotations = []
                 for page_annotations in work_data.get('annotations', []):
-                    page_rectangles = []
-                    for annotation in page_annotations:
-                        rectangle = _annotation_to_rectangle(annotation)
-                        if rectangle is not None:
-                            page_rectangles.append(rectangle)
-                    rectangles.append(page_rectangles)
+                    page = []
+                    for entry in page_annotations:
+                        normalized = _normalize_annotation_dict(entry)
+                        if normalized is not None:
+                            page.append(normalized)
+                    annotations.append(page)
             else:
-                # v1: rectangles stored directly; drop stale graph ids.
-                rectangles = [
-                    [[tuple(rectangle[0]), tuple(rectangle[1]), rectangle[2], None]
-                     for rectangle in page_rectangles]
+                # v1: rectangle tuples -> redact annotations.
+                annotations = [
+                    _migrate_v1_page(page_rectangles)
                     for page_rectangles in work_data.get('rectangles', [])
                 ]
 
-            result = {
-                'rectangles': rectangles,
+            return {
+                'annotations': annotations,
                 'pages': work_data.get('pages'),
                 'current_page': work_data.get('current_page', 0),
                 'fill_color': work_data.get('fill_color'),
                 'output_quality': work_data.get('output_quality'),
+                'decorations': work_data.get('decorations', {}) or {},
+                'journal': work_data.get('journal', []) or [],
             }
-            if work_data.get('version', 1) >= 2:
-                result['decorations'] = work_data.get('decorations', {})
-                result['journal'] = work_data.get('journal', [])
-            return result
         except Exception:
             return None

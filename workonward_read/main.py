@@ -24,7 +24,7 @@ import FreeSimpleGUI as sg
 
 from workonward_read import __version__, canvas_tools
 from workonward_read.image_container import ImageContainer
-from workonward_read.workfile import WorkfileManager, get_default_datadir
+from workonward_read.workfile import WorkfileManager, get_default_datadir, serialize_journal
 from workonward_read.state import AppState
 from workonward_read.handlers import HANDLERS, TOOLBAR_HANDLERS
 from workonward_read.handlers.view import flip_to_page, load_image_to_graph, scale_graph_to_image  # noqa: F401 (re-export)
@@ -220,7 +220,7 @@ def main():
             if state.images:
                 try:
                     page = int(values['-PAGE_NUM-'])
-                    state.current_page = flip_to_page(window, state.images, page - 1)
+                    state.current_page = flip_to_page(window, state.images, page - 1, state)
                 except ValueError:
                     pass
 
@@ -235,7 +235,9 @@ def main():
         try:
             state.workfile_manager.save(
                 state.images, state.current_page,
-                state.fill_color, state.output_quality
+                state.fill_color, state.output_quality,
+                decorations=state.decorations,
+                journal=serialize_journal(state.journal)
             )
         except Exception:
             pass  # Don't crash on exit if save fails

@@ -1,9 +1,12 @@
 """
-ImageContainer class for managing PDF page images and redaction rectangles.
+ImageContainer class for managing PDF page images and typed annotations.
 
 This module provides the ImageContainer class which wraps a PIL Image with
-additional functionality for managing redaction rectangles, zoom levels,
-and export operations.
+additional functionality for managing typed annotations (redactions, text,
+highlights, shapes, stamps, images, signatures, …), zoom levels, and export
+operations. Burn-in rendering is delegated to
+:mod:`workonward_read.annotations` (``render_on_image``), which is also what the
+ProcessPoolExecutor workers run at export time.
 
 Each page of a loaded document is represented by an ImageContainer instance.
 """
@@ -12,10 +15,25 @@ import gc
 import io
 from concurrent.futures import ProcessPoolExecutor, wait as wait_futures
 
-from PIL import Image, ImageDraw
+from PIL import Image
 
-from workonward_read.utils import get_worker_count
+from workonward_read import annotations as annotations_engine
+from workonward_read.utils import get_worker_count, find_fonts_folder, get_resource_root
 from workonward_read.i18n import _
+
+
+_FONT_DIR = None
+
+
+def default_font_dir():
+    """Resolve (and cache) the bundled DejaVu font folder for burn-in text."""
+    global _FONT_DIR
+    if _FONT_DIR is None:
+        try:
+            _FONT_DIR = find_fonts_folder(get_resource_root())
+        except Exception:
+            _FONT_DIR = ''
+    return _FONT_DIR
 
 
 def _finalize_page_worker(args):
@@ -23,12 +41,15 @@ def _finalize_page_worker(args):
     Worker function for parallel page finalization. Runs in separate process.
 
     Args:
-        args: Tuple of (page_index, image_bytes, rectangles, format, quality, scale, page_size)
+        args: Tuple of (page_index, image_bytes, ann_dicts, format, quality,
+              scale, page_size, decorations, total_pages, font_dir).
 
     Returns:
-        Tuple of (page_index, finalized_image_bytes, page_size) or (page_index, None, error_msg)
+        Tuple of (page_index, finalized_image_bytes, page_size) or
+        (page_index, None, error_msg).
     """
-    page_index, image_bytes, rectangles, img_format, quality, scale, page_size = args
+    (page_index, image_bytes, ann_dicts, img_format, quality, scale,
+     page_size, decorations, total_pages, font_dir) = args
     image = None
     input_buffer = None
     output_buffer = None
@@ -39,17 +60,13 @@ def _finalize_page_worker(args):
         # Load image data into memory so we can close the buffer
         image.load()
 
-        # Draw rectangles on image
-        draw = ImageDraw.Draw(image)
-        for rect in rectangles:
-            # rect format: (start_coords, end_coords, color, graph_id)
-            draw.rectangle(xy=[rect[0], rect[1]], fill=rect[2])
-
-        # Convert to RGB for JPEG
-        if img_format in ('JPEG', 'JPG'):
-            rgb_image = image.convert('RGB')
-            image.close()
-            image = rgb_image
+        # Burn annotations + document decorations into the page (returns a
+        # new RGB image; the source image is never mutated).
+        burned = annotations_engine.render_on_image(
+            image, ann_dicts, decorations or {}, page_index, total_pages,
+            page_size[0], page_size[1], font_dir)
+        image.close()
+        image = burned
 
         # Scale if needed
         if scale != 1:
@@ -59,7 +76,7 @@ def _finalize_page_worker(args):
             image.close()
             image = scaled_image
 
-        # Save to bytes
+        # Save to bytes (render_on_image already returned RGB)
         output_buffer = io.BytesIO()
         if img_format in ('JPEG', 'JPG'):
             image.save(output_buffer, format='JPEG', quality=quality, optimize=True)
@@ -91,21 +108,20 @@ def _finalize_page_worker(args):
 
 class ImageContainer:
     """
-    Container for images of PDF pages with redaction rectangle support.
+    Container for images of PDF pages with typed annotation support.
 
-    Manages a single page image along with its redaction rectangles,
-    zoom state, and provides methods for drawing, exporting, and
-    manipulating the page content.
+    Manages a single page image along with its annotations, zoom state, and
+    provides methods for drawing, exporting, and manipulating the page
+    content.
 
     Attributes:
         image: Original PIL Image of the page.
-        size: Tuple of (height_pt, width_pt) for PDF output dimensions.
-        height_in_pt: Height in PDF points for export.
-        width_in_pt: Width in PDF points for export.
+        size: Tuple of PDF point dimensions for export (kept in the order it
+              was handed in; the export path forwards it unchanged to FPDF).
+        height_in_pt / width_in_pt: PDF point dimensions for export.
         scaled_image: Current scaled version of the image for display.
         id: Graph element ID when displayed.
-        rectangles: List of redaction rectangles as
-                    [(start_coords, end_coords, color, graph_id), ...].
+        annotations: List of :class:`workonward_read.annotations.Annotation`.
 
     Class Attributes:
         zoom_factor: Shared zoom level (percentage) across all instances.
@@ -113,14 +129,14 @@ class ImageContainer:
 
     zoom_factor = 100
 
-    def __init__(self, image, size=(0, 0), rectangles=None):
+    def __init__(self, image, size=(0, 0), annotations=None):
         """
         Initialize an ImageContainer.
 
         Args:
             image: PIL Image object for this page.
-            size: Tuple of (height_pt, width_pt) for PDF dimensions.
-            rectangles: Optional list of existing rectangles.
+            size: Tuple of PDF point dimensions.
+            annotations: Optional list of existing Annotation objects.
         """
         self.image = image
         self.size = size
@@ -129,8 +145,8 @@ class ImageContainer:
         self.scaled_image = self.image
         self.id = None
 
-        # List of rectangles: [(start_coords, end_coords, color, graph_id), ...]
-        self.rectangles = list() if rectangles is None else rectangles
+        # List of typed annotations for this page.
+        self.annotations = list() if annotations is None else annotations
 
     def close(self):
         """Release all image resources held by this container."""
@@ -180,13 +196,6 @@ class ImageContainer:
         newheight = int(height * ImageContainer.zoom_factor / 100)
         self.scaled_image = self.image.resize((newwidth, newheight), resample=Image.Resampling.BILINEAR)
 
-    def undo(self, window):
-        """Go back in history. Remove last rectangle and redraw rectangles."""
-        if len(self.rectangles) > 0:
-            delete_id = self.rectangles.pop()
-            window['-GRAPH-'].delete_figure(delete_id[3])
-        return self
-
     def data(self):
         """Return bytes of scaled image."""
         with io.BytesIO() as output:
@@ -194,6 +203,25 @@ class ImageContainer:
             data = output.getvalue()
             # Note: Don't cache - causes memory issues with large documents
             return data
+
+    def display_data(self, decorations, page_idx, total_pages):
+        """
+        Return PNG bytes of the scaled image with document decorations
+        (watermark, header/footer, page numbers, Bates) burned into a COPY
+        for on-screen preview. Annotations are not included here — they are
+        drawn as interactive graph figures. The original image data is never
+        touched, so zoom and page flips stay lossless.
+        """
+        if not decorations:
+            return self.data()
+        burned = annotations_engine.render_on_image(
+            self.scaled_image, [], decorations, page_idx, total_pages,
+            self.height_in_pt, self.width_in_pt, default_font_dir())
+        with io.BytesIO() as output:
+            burned.save(output, format='PNG')
+            data = output.getvalue()
+        burned.close()
+        return data
 
     def jpg(self, image, image_quality=85, scale=1):
         """
@@ -229,115 +257,119 @@ class ImageContainer:
         self.scale_image()
         return self
 
-    def finalized_image(self, format='PIL', image_quality=92, scale=1):
+    def add_annotation(self, kind, props):
         """
-        Return a copy of the imported image with all rectangles drawn.
+        Create an Annotation of ``kind`` with ``props`` (original-image px
+        coordinates), append it to this page and return it. Rendering to the
+        graph is the caller's job (see canvas_tools.commit_annotation and
+        draw_annotations_on_graph).
+        """
+        ann = annotations_engine.Annotation(
+            id=annotations_engine.new_id(), kind=kind, props=props)
+        self.annotations.append(ann)
+        return ann
+
+    def finalized_image(self, format='PIL', image_quality=92, scale=1,
+                        decorations=None, page_idx=0, total_pages=1):
+        """
+        Return a copy of the imported image with all annotations (and
+        optional document decorations) burned in.
 
         Args:
             format: Output format - 'PIL' returns PIL Image, 'JPEG'/'JPG' returns bytes.
             image_quality: JPEG quality (1-100). Default 92 for high quality.
             scale: Scale factor for DPI adjustment. Use 0.64 for ~96 DPI from 150 DPI import.
+            decorations: Optional document-level decorations dict.
+            page_idx: 0-based index of this page in the document.
+            total_pages: Total page count of the document.
 
         Returns:
-            PIL Image or bytes depending on format parameter.
+            PIL Image (RGB) or bytes depending on format parameter.
         """
-        final_image = self.draw_rectangles_on_image(self.image.copy())
+        ann_dicts = [annotations_engine.to_dict(a) for a in self.annotations]
+        final_image = annotations_engine.render_on_image(
+            self.image, ann_dicts, decorations or {}, page_idx, total_pages,
+            self.height_in_pt, self.width_in_pt, default_font_dir())
         if format in ('JPEG', 'JPG'):
-            rgb_image = final_image.convert('RGB')
-            final_image.close()  # Close the original copy
-            result = self.jpg(rgb_image, image_quality, scale)
-            rgb_image.close()  # Close the RGB conversion
+            result = self.jpg(final_image, image_quality, scale)
+            final_image.close()
             return result
         else:
             return final_image
 
-    def draw_rectangles_on_image(self, image):
-        """Draw the rectangles in self.rectangles on image."""
-        draw = ImageDraw.Draw(image)
+    def draw_annotations_on_graph(self, window):
+        """Draw all annotations to the graph at the current zoom.
 
-        for rectangle in self.rectangles:
-            draw.rectangle(xy=[rectangle[0], rectangle[1]], fill=rectangle[2])
-        return image
-
-    def draw_rectangles_on_graph(self, window):
-        """Draw all rectangles in the rectangles list to the graph in the correct scale."""
-        # Delete old graph figures before redrawing to prevent accumulation
-        for rectangle in self.rectangles:
-            if rectangle[3] is not None:
+        Old figure ids are deleted first to prevent accumulation; the new
+        figure ids are stored back on each Annotation (transient).
+        """
+        graph = window['-GRAPH-']
+        for ann in self.annotations:
+            for figure_id in (ann.graph_ids or []):
                 try:
-                    window['-GRAPH-'].delete_figure(rectangle[3])
+                    graph.delete_figure(figure_id)
                 except Exception:
                     pass
-
-        new_rectangles = list()
-
-        for rectangle in self.rectangles:
-            factor = ImageContainer.zoom_factor / 100
-            scaled_start_point = [int(x * factor) for x in rectangle[0]]
-            scaled_end_point = [int(x * factor) for x in rectangle[1]]
-            fill = rectangle[2]
-
-            rectangle_id = window['-GRAPH-'].draw_rectangle(
-                (scaled_start_point[0], -scaled_start_point[1]),
-                (scaled_end_point[0], -scaled_end_point[1]),
-                fill_color=fill,
-                line_color=fill,
-                line_width=None
-            )
-
-            new_rectangles.append((rectangle[0], rectangle[1], fill, rectangle_id))
-
-        self.rectangles = new_rectangles
+            ann.graph_ids = []
+            try:
+                annotations_engine.render_on_graph(
+                    graph, ann, ImageContainer.zoom_factor)
+            except Exception:
+                ann.graph_ids = []
 
     def draw_rectangle(self, window, start_point, end_point, fill='black'):
-        """Draw a rectangle on graph and add it to the rectangles list."""
+        """Compatibility path for the classic redaction flow: convert
+        graph-space (zoomed) points back to original px, add a 'redact'
+        annotation and draw it on the graph.
+
+        Note: does NOT push an undo snapshot — canvas tools go through
+        ``canvas_tools.commit_annotation`` which does.
+        """
         try:
             factor = ImageContainer.zoom_factor / 100
 
-            computed_startpoint_x = int((start_point[0]) / factor)
-            computed_startpoint_y = int((start_point[1]) / factor)
+            start_point_in_original = [int(start_point[0] / factor),
+                                       int(start_point[1] / factor)]
+            end_point_in_original = [int(end_point[0] / factor),
+                                     int(end_point[1] / factor)]
 
-            computed_endpoint_x = int((end_point[0]) / factor)
-            computed_endpoint_y = int((end_point[1]) / factor)
-
-            start_point_in_original = (computed_startpoint_x, computed_startpoint_y)
-            end_point_in_original = (computed_endpoint_x, computed_endpoint_y)
-
-            rectangle_id = window['-GRAPH-'].draw_rectangle(
-                (start_point[0], -start_point[1]),
-                (end_point[0], -end_point[1]),
-                fill_color=fill,
-                line_color=fill,
-                line_width=None
-            )
-            self.rectangles.append((start_point_in_original, end_point_in_original, fill, rectangle_id))
-
+            ann = self.add_annotation('redact', {
+                'p1': start_point_in_original,
+                'p2': end_point_in_original,
+                'fill': fill,
+            })
+            try:
+                annotations_engine.render_on_graph(
+                    window['-GRAPH-'], ann, ImageContainer.zoom_factor)
+            except Exception:
+                ann.graph_ids = []
         except ValueError:
             pass
         return self
 
 
-def export_rectangles(pages):
+def export_annotations(pages):
     """
-    Export all rectangles from all pages for serialization.
+    Export all annotations from all pages for serialization.
 
     Args:
         pages: List of ImageContainer instances.
 
     Returns:
-        list: List of rectangle lists, one per page, or None if no rectangles exist
-              or if pages is empty/None.
+        list: List of annotation-dict lists, one per page, or None if no
+              annotations exist or if pages is empty/None.
     """
     if not pages:
         return None
 
     try:
-        rectangles = [page.rectangles for page in pages]
-        contains_rectangles = [bool(item) for item in rectangles]
-        if any(contains_rectangles):
-            return rectangles
-        else:
-            return None
+        annotations = [
+            [annotations_engine.to_dict(a) for a in page.annotations]
+            for page in pages
+        ]
+        if any(annotations):
+            return annotations
+        return None
     except (AttributeError, TypeError):
         return None
 
@@ -366,9 +398,9 @@ def close_all_pages(pages):
     gc.collect()
 
 
-def delete_all_rectangles(pages, delete_workfile_func):
+def delete_all_annotations(pages, delete_workfile_func):
     """
-    Delete all rectangles from all pages.
+    Delete all annotations from all pages.
 
     Args:
         pages: List of ImageContainer instances.
@@ -382,8 +414,8 @@ def delete_all_rectangles(pages, delete_workfile_func):
 
     try:
         for page in pages:
-            if hasattr(page, 'rectangles'):
-                page.rectangles = []
+            if hasattr(page, 'annotations'):
+                page.annotations = []
 
         if callable(delete_workfile_func):
             delete_workfile_func()
@@ -394,7 +426,8 @@ def delete_all_rectangles(pages, delete_workfile_func):
 
 
 def finalize_pages_chunked(pages, img_format='JPEG', quality=92, scale=1,
-                           chunk_size=50, progress_callback=None):
+                           chunk_size=50, progress_callback=None,
+                           decorations=None):
     """
     Finalize pages in chunks using multiprocessing, yielding results progressively.
 
@@ -414,6 +447,9 @@ def finalize_pages_chunked(pages, img_format='JPEG', quality=92, scale=1,
         chunk_size: Number of pages to process per chunk (default: 50).
         progress_callback: Optional callback(completed, total) for progress updates.
                           Called with float values to support half-page increments.
+        decorations: Optional document-level decorations dict burned into
+                     every page (watermark, header/footer, page numbers,
+                     Bates). Must be picklable (plain JSON-like dict).
 
     Yields:
         Tuples of (image_bytes, page_size) in page order.
@@ -427,6 +463,8 @@ def finalize_pages_chunked(pages, img_format='JPEG', quality=92, scale=1,
     total_pages = len(pages)
     max_workers = get_worker_count(max_tasks=min(chunk_size, total_pages))
     completed_total = 0.0
+    decorations = decorations or {}
+    font_dir = default_font_dir()
 
     # Process pages in chunks
     for chunk_start in range(0, total_pages, chunk_size):
@@ -443,22 +481,25 @@ def finalize_pages_chunked(pages, img_format='JPEG', quality=92, scale=1,
                 page.image.save(buffer, format='JPEG')
                 image_bytes = buffer.getvalue()
 
-            # Extract rectangle data (without graph_id which isn't needed)
-            rectangles = [(r[0], r[1], r[2], None) for r in page.rectangles]
+            # Extract picklable annotation dicts (graph ids are dropped)
+            ann_dicts = [annotations_engine.to_dict(a) for a in page.annotations]
 
             worker_args.append((
                 page_idx,
                 image_bytes,
-                rectangles,
+                ann_dicts,
                 img_format,
                 quality,
                 scale,
-                (page.height_in_pt, page.width_in_pt)
+                (page.height_in_pt, page.width_in_pt),
+                decorations,
+                total_pages,
+                font_dir,
             ))
 
             # Clear reference to allow GC of this page's bytes before next iteration
             del image_bytes
-            del rectangles
+            del ann_dicts
 
             # Report preparation progress (half credit per page)
             completed_total += 0.5

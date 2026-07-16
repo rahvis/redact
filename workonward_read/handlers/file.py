@@ -24,6 +24,8 @@ from workonward_read import __version__, ui
 from workonward_read.document_loader import load_document
 from workonward_read.image_container import ImageContainer, close_all_pages, finalize_pages_chunked
 from workonward_read.handlers.view import flip_to_page
+from workonward_read.pdf_ops import PageOpsJournal
+from workonward_read.workfile import serialize_journal
 from workonward_read.i18n import _, _plural
 
 
@@ -35,6 +37,18 @@ def _tool_cursor(state):
     from workonward_read.canvas_tools import TOOLS
     tool = TOOLS.get(state.tool)
     return getattr(tool, 'cursor', 'crosshair')
+
+
+def _save_worksession(state):
+    """Persist the current session (annotations, decorations, journal)."""
+    if state.workfile_manager is None:
+        return
+    state.workfile_manager.save(
+        state.images, state.current_page, state.fill_color,
+        state.output_quality,
+        decorations=state.decorations,
+        journal=serialize_journal(state.journal)
+    )
 
 
 def load_path(window, state, load_file_path, error_key='error_loading'):
@@ -54,11 +68,23 @@ def load_path(window, state, load_file_path, error_key='error_loading'):
         gc.collect()
 
         ImageContainer.zoom_factor = 100
-        images, file_path, current_page, new_fill_color, new_output_quality = load_document(
+        (images, file_path, current_page, new_fill_color, new_output_quality,
+         extras) = load_document(
             load_file_path, state.import_ppi, window, state.workfile_manager
         )
         state.images = images
         state.file_path = file_path
+
+        # Keep the password used to open an encrypted source for later
+        # lossless operations (never persisted).
+        state.source_password = extras.get('password')
+
+        # Restored session context (empty on a fresh document).
+        state.decorations = extras.get('decorations') or {}
+        journal_ops = extras.get('journal') or []
+        state.journal = (PageOpsJournal.from_dict({'ops': journal_ops})
+                         if journal_ops else None)
+        state.undo = {}
 
         # Apply restored settings if available
         if new_fill_color and state.fill_color != new_fill_color:
@@ -68,7 +94,7 @@ def load_path(window, state, load_file_path, error_key='error_loading'):
 
         state.first_load = False
         window['-PROGRESS-'].update(current_count=0)
-        state.current_page = flip_to_page(window, state.images, current_page)
+        state.current_page = flip_to_page(window, state.images, current_page, state)
         window.set_title(_('app_title_with_file', filename=os.path.basename(file_path)))
 
     except Exception as e:
@@ -82,10 +108,7 @@ def load_path(window, state, load_file_path, error_key='error_loading'):
 
 def open_document(window, state):
     """Ask for a file and load it (classic LOAD_PDF behavior)."""
-    if state.workfile_manager is not None:
-        state.workfile_manager.save(
-            state.images, state.current_page, state.fill_color, state.output_quality
-        )
+    _save_worksession(state)
 
     # Open home-folder when first time loading a pdf
     if state.first_load:
@@ -148,7 +171,10 @@ def _render_pdf_to_path(window, state, save_file_path, export_page):
             window.refresh()
 
             include_image = images[current_page].finalized_image(
-                'JPEG', image_quality=quality, scale=scale
+                'JPEG', image_quality=quality, scale=scale,
+                decorations=state.decorations,
+                page_idx=current_page,
+                total_pages=len(images)
             )
             out_pdf.image(include_image, x=0, y=0, w=out_pdf.w)
             del include_image  # Release image bytes immediately
@@ -176,7 +202,8 @@ def _render_pdf_to_path(window, state, save_file_path, export_page):
                 quality=quality,
                 scale=scale,
                 chunk_size=50,
-                progress_callback=update_progress
+                progress_callback=update_progress,
+                decorations=state.decorations
             ):
                 out_pdf.add_page(format=page_size)
                 out_pdf.image(img_bytes, x=0, y=0, w=out_pdf.w)
@@ -234,10 +261,7 @@ def _save_document(window, state, export_page):
 
         window.set_cursor(POINTER_CURSOR)
         window['-GRAPH-'].set_cursor(_tool_cursor(state))
-        if state.workfile_manager is not None:
-            state.workfile_manager.save(
-                state.images, state.current_page, state.fill_color, state.output_quality
-            )
+        _save_worksession(state)
 
         # Show success message
         window['-PROGRESS-'].update(current_count=0)

@@ -14,6 +14,7 @@ import FreeSimpleGUI as sg
 import pypdfium2 as pdfium
 from PIL import Image
 
+from workonward_read import annotations as annotations_engine
 from workonward_read.image_container import ImageContainer
 from workonward_read.utils import is_valid_file_type, get_worker_count
 from workonward_read.i18n import _
@@ -91,8 +92,17 @@ def load_document(load_file_path, import_ppi, window, workfile_manager, show_res
         show_restore_prompt: Whether to show the restore work session prompt
 
     Returns:
-        tuple: (images_list, file_path, current_page, fill_color_change, quality_change)
-               fill_color_change and quality_change are the values to set, or None if no change needed
+        tuple: (images_list, file_path, current_page, fill_color_change,
+               quality_change, extras).
+               fill_color_change and quality_change are the values to set, or
+               None if no change needed. ``extras`` is a dict with:
+               - 'password': password used to open an encrypted source
+                 (None otherwise) — callers keep it in state.source_password,
+                 it is never persisted.
+               - 'decorations': restored decorations dict (present only when
+                 a work session was restored).
+               - 'journal': restored journal ops list (present only when a
+                 work session was restored).
 
     Raises:
         FileNotFoundError: If the file doesn't exist
@@ -109,11 +119,11 @@ def load_document(load_file_path, import_ppi, window, workfile_manager, show_res
     loaded_page = 0
     new_fill_color = None
     new_output_quality = None
+    pdf_password = None  # Password used to open an encrypted source
 
     # Import PDF files
     if load_file_path.lower().endswith('.pdf'):
         pdf = None
-        pdf_password = None  # Track password for multiprocessing
 
         # Try to open the PDF, handle encrypted files
         try:
@@ -267,6 +277,8 @@ def load_document(load_file_path, import_ppi, window, workfile_manager, show_res
     # Set file_path for workfile functions
     workfile_manager.set_file_path(load_file_path)
 
+    extras = {'password': pdf_password}
+
     # Check for previous work session
     work_data = workfile_manager.load()
     if show_restore_prompt and work_data and work_data['pages'] == len(images_list):
@@ -282,17 +294,20 @@ def load_document(load_file_path, import_ppi, window, workfile_manager, show_res
         )
         try:
             if result == 'OK':
-                for rectangles, page in zip(work_data['rectangles'], images_list):
-                    page.rectangles = [
-                        [tuple(rectangle[0]), tuple(rectangle[1]), rectangle[2], rectangle[3]]
-                        for rectangle in rectangles
+                for page_annotations, page in zip(work_data['annotations'], images_list):
+                    page.annotations = [
+                        annotations_engine.from_dict(entry)
+                        for entry in page_annotations
                     ]
                 loaded_page = int(work_data['current_page'])
                 new_fill_color = work_data['fill_color']
                 new_output_quality = work_data['output_quality']
+                extras['decorations'] = work_data.get('decorations') or {}
+                extras['journal'] = work_data.get('journal') or []
             else:
                 workfile_manager.delete()
         except Exception:
             pass
 
-    return images_list, load_file_path, loaded_page, new_fill_color, new_output_quality
+    return (images_list, load_file_path, loaded_page, new_fill_color,
+            new_output_quality, extras)

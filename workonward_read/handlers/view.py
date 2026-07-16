@@ -17,18 +17,34 @@ def scale_graph_to_image(window, image):
     window['-GRAPH-'].Widget.config(width=image.width, height=image.height)
 
 
-def load_image_to_graph(window, image, location=(0, 0)):
-    """Load image to Graph element and adjust position."""
+def load_image_to_graph(window, image, location=(0, 0), state=None, page_idx=None):
+    """Load image to Graph element and adjust position.
+
+    When ``state`` carries document decorations, a decoration preview is
+    burned into a COPY of the displayed (scaled) image via
+    ``ImageContainer.display_data`` — the original image data is never
+    modified, so zoom and page flips stay lossless. Annotations are drawn
+    on top as interactive graph figures.
+    """
     window['-GRAPH-'].erase()
-    id = window['-GRAPH-'].draw_image(data=image.data(), location=location)
+    data = None
+    if state is not None and getattr(state, 'decorations', None):
+        try:
+            idx = state.current_page if page_idx is None else page_idx
+            data = image.display_data(state.decorations, idx, len(state.images))
+        except Exception:
+            data = None
+    if data is None:
+        data = image.data()
+    id = window['-GRAPH-'].draw_image(data=data, location=location)
 
     scale_graph_to_image(window, image.scaled_image)
-    image.draw_rectangles_on_graph(window)
+    image.draw_annotations_on_graph(window)
     image.id = id
     return id
 
 
-def flip_to_page(window, images, page):
+def flip_to_page(window, images, page, state=None):
     """Update graph with next/previous image. Update page number display."""
     try:
         page = int(page)
@@ -41,7 +57,7 @@ def flip_to_page(window, images, page):
 
     img = images[page]
     scale_graph_to_image(window, img.refresh().image)
-    load_image_to_graph(window, img)
+    load_image_to_graph(window, img, state=state, page_idx=page)
     window['-PAGE_NUM-'].update(value=int(page) + 1)
     return page
 
@@ -55,7 +71,7 @@ def zoom_in(window, state):
     container = state.images[state.current_page]
     container.increase_zoom()
     scale_graph_to_image(window, container.scaled_image)
-    load_image_to_graph(window, container)
+    load_image_to_graph(window, container, state=state, page_idx=state.current_page)
 
 
 def zoom_out(window, state):
@@ -65,21 +81,21 @@ def zoom_out(window, state):
     container = state.images[state.current_page]
     container.decrease_zoom()
     scale_graph_to_image(window, container.scaled_image)
-    load_image_to_graph(window, container)
+    load_image_to_graph(window, container, state=state, page_idx=state.current_page)
 
 
 def prev_page(window, state):
     """Flip to the previous page (wraps around)."""
     if not state.images:
         return
-    state.current_page = flip_to_page(window, state.images, state.current_page - 1)
+    state.current_page = flip_to_page(window, state.images, state.current_page - 1, state)
 
 
 def next_page(window, state):
     """Flip to the next page (wraps around)."""
     if not state.images:
         return
-    state.current_page = flip_to_page(window, state.images, state.current_page + 1)
+    state.current_page = flip_to_page(window, state.images, state.current_page + 1, state)
 
 
 def toggle_thumbnails(window, state):

@@ -1,5 +1,10 @@
 """
-Edit handlers for WorkOnward Read: undo, redo (placeholder) and delete-all.
+Edit handlers for WorkOnward Read: undo, redo and delete-all.
+
+Undo/redo use the per-page snapshot stacks in ``state.undo``
+(:class:`workonward_read.annotations.UndoStack`); canvas tools push a snapshot
+before every annotation-adding/removing action. The toolbar UNDO icon maps
+to the same handler (see handlers/__init__.py).
 
 Licensed under GPL-3.0
 (c) 2024 - 2026 Björn Seipel
@@ -8,25 +13,61 @@ Acrobat-suite additions (c) 2026 CoverUP contributors
 
 import FreeSimpleGUI as sg
 
-from workonward_read.image_container import delete_all_rectangles
+from workonward_read.annotations import UndoStack
+from workonward_read.image_container import delete_all_annotations
 from workonward_read.handlers.view import flip_to_page
+from workonward_read.workfile import serialize_journal
 from workonward_read.i18n import _
 
 
+def _apply_snapshot(window, container, snapshot):
+    """Replace the container's annotations with a snapshot and redraw."""
+    for ann in container.annotations:
+        for figure_id in (ann.graph_ids or []):
+            try:
+                window['-GRAPH-'].delete_figure(figure_id)
+            except Exception:
+                pass
+    container.annotations = snapshot
+    try:
+        container.draw_annotations_on_graph(window)
+    except Exception:
+        pass
+
+
 def undo(window, state):
-    """Remove the most recent rectangle on the current page."""
+    """Restore the previous annotation snapshot of the current page."""
     if not state.images:
         return
-    state.images[state.current_page].undo(window)
+    stack = state.undo.get(state.current_page)
+    if stack is None:
+        return
+    container = state.images[state.current_page]
+    snapshot = stack.undo(container.annotations)
+    if snapshot is None:
+        return
+    _apply_snapshot(window, container, snapshot)
 
 
 def redo(window, state):
-    """Redo placeholder — becomes functional with the wave-2 UndoStack."""
-    return None
+    """Re-apply the most recently undone snapshot of the current page."""
+    if not state.images:
+        return
+    stack = state.undo.get(state.current_page)
+    if stack is None:
+        return
+    container = state.images[state.current_page]
+    snapshot = stack.redo(container.annotations)
+    if snapshot is None:
+        return
+    _apply_snapshot(window, container, snapshot)
 
 
 def delete_all(window, state):
-    """Ask for confirmation, then delete every rectangle on every page."""
+    """Ask for confirmation, then delete every annotation on every page.
+
+    A snapshot is pushed onto each affected page's UndoStack first, so the
+    deletion is undoable per page."""
     if not state.images:
         return
 
@@ -44,14 +85,19 @@ def delete_all(window, state):
 
     if result == 'OK':
         try:
+            for page_idx, page in enumerate(state.images):
+                if getattr(page, 'annotations', None):
+                    state.undo.setdefault(page_idx, UndoStack()).push(page.annotations)
             delete_workfile = (state.workfile_manager.delete
                                if state.workfile_manager is not None else None)
-            delete_all_rectangles(state.images, delete_workfile)
-            state.current_page = flip_to_page(window, state.images, state.current_page)
+            delete_all_annotations(state.images, delete_workfile)
+            state.current_page = flip_to_page(window, state.images, state.current_page, state)
             if state.workfile_manager is not None:
                 state.workfile_manager.save(
                     state.images, state.current_page,
-                    state.fill_color, state.output_quality
+                    state.fill_color, state.output_quality,
+                    decorations=state.decorations,
+                    journal=serialize_journal(state.journal)
                 )
         except Exception:
             pass
