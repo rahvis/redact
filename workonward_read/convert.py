@@ -19,9 +19,11 @@ import os
 import re
 from typing import Callable, Optional
 
-import pypdfium2 as pdfium
 from fpdf import FPDF
 from PIL import Image
+
+from workonward_read import pdfium_io
+from workonward_read.pdfium_io import PDFIUM_LOCK
 
 # Import PPI used by the app when sizing image pages (see document_loader).
 IMPORT_PPI = 200
@@ -36,22 +38,6 @@ ProgressCb = Optional[Callable[[int, str], None]]
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
-
-def _open_pdfium(input_path: str, password: Optional[str] = None) -> "pdfium.PdfDocument":
-    """Open a PDF with pypdfium2, mapping password failures to ValueError."""
-    if not input_path or not os.path.isfile(input_path):
-        raise FileNotFoundError(f"File not found: {input_path}")
-    try:
-        if password:
-            return pdfium.PdfDocument(input_path, password=password)
-        return pdfium.PdfDocument(input_path)
-    except pdfium.PdfiumError as exc:
-        if "password" in str(exc).lower():
-            raise ValueError(
-                "The PDF is encrypted and requires a correct password."
-            ) from exc
-        raise ValueError(f"Could not open PDF: {exc}") from exc
-
 
 def _report(progress_cb: ProgressCb, done: int, total: int, msg: str) -> None:
     """Invoke progress_cb(pct, msg) if given, never letting it break the job."""
@@ -95,23 +81,28 @@ def _a4_fit_scale(width: int, height: int, ppi: int = IMPORT_PPI) -> float:
     return a4_short_side / height
 
 
-def _extract_page_text(pdf: "pdfium.PdfDocument", index: int) -> str:
-    """Extract the full text of one page via a pdfium textpage."""
-    page = pdf[index]
-    textpage = None
-    try:
-        textpage = page.get_textpage()
-        return textpage.get_text_bounded() or ""
-    finally:
-        if textpage is not None:
+def _extract_page_text(pdf, index: int) -> str:
+    """Extract the full text of one page via a pdfium textpage.
+
+    Holds PDFIUM_LOCK for the whole per-page call sequence (pdfium is not
+    thread-safe).
+    """
+    with PDFIUM_LOCK:
+        page = pdf[index]
+        textpage = None
+        try:
+            textpage = page.get_textpage()
+            return textpage.get_text_bounded() or ""
+        finally:
+            if textpage is not None:
+                try:
+                    textpage.close()
+                except Exception:
+                    pass
             try:
-                textpage.close()
+                page.close()
             except Exception:
                 pass
-        try:
-            page.close()
-        except Exception:
-            pass
 
 
 def _paragraphs_per_page(input_path: str, password: Optional[str] = None) -> list:
@@ -204,20 +195,21 @@ def pdf_to_images(input_path: str, out_dir: str, fmt: str = "PNG", dpi: int = 20
         fmt = "JPEG"
     ext = "jpg" if fmt == "JPEG" else fmt.lower()
 
-    pdf = _open_pdfium(input_path, password)
+    pdf = pdfium_io.open_pdf(input_path, password)
     written = []
     try:
-        indices = _resolve_pages(len(pdf), pages)
+        with PDFIUM_LOCK:
+            total_pages = len(pdf)
+        indices = _resolve_pages(total_pages, pages)
         os.makedirs(out_dir, exist_ok=True)
         stem = os.path.splitext(os.path.basename(input_path))[0]
         scale = dpi / 72
         total = len(indices)
 
         for done, page_index in enumerate(indices, start=1):
-            page = pdf[page_index]
-            pil_image = None
+            # Render under PDFIUM_LOCK (per page); encode/save outside it.
+            pil_image = pdfium_io.render_page_to_pil(pdf, page_index, scale)
             try:
-                pil_image = page.render(scale=scale).to_pil()
                 if fmt == "JPEG" and pil_image.mode != "RGB":
                     converted = pil_image.convert("RGB")
                     pil_image.close()
@@ -228,23 +220,15 @@ def pdf_to_images(input_path: str, out_dir: str, fmt: str = "PNG", dpi: int = 20
                 pil_image.save(out_path, format=fmt)
                 written.append(out_path)
             finally:
-                if pil_image is not None:
-                    try:
-                        pil_image.close()
-                    except Exception:
-                        pass
                 try:
-                    page.close()
+                    pil_image.close()
                 except Exception:
                     pass
             _report(progress_cb, done, total, f"{done}/{total}")
             if done % 10 == 0:
                 gc.collect()
     finally:
-        try:
-            pdf.close()
-        except Exception:
-            pass
+        pdfium_io.close_pdf(pdf)
     return written
 
 
@@ -255,18 +239,17 @@ def pdf_to_text(input_path: str, output: str, password: Optional[str] = None) ->
     Pages are extracted with pypdfium2 textpages and joined with a
     form-feed character ('\\f'). Returns the output path.
     """
-    pdf = _open_pdfium(input_path, password)
+    pdf = pdfium_io.open_pdf(input_path, password)
     try:
+        with PDFIUM_LOCK:
+            total = len(pdf)
         with open(output, "w", encoding="utf-8") as fh:
-            for index in range(len(pdf)):
+            for index in range(total):
                 if index > 0:
                     fh.write("\f")
                 fh.write(_extract_page_text(pdf, index))
     finally:
-        try:
-            pdf.close()
-        except Exception:
-            pass
+        pdfium_io.close_pdf(pdf)
     return output
 
 
@@ -308,13 +291,15 @@ def pdf_to_html(input_path: str, output: str, password: Optional[str] = None,
 
     page_images = []
     if embed_page_images:
-        pdf = _open_pdfium(input_path, password)
+        pdf = pdfium_io.open_pdf(input_path, password)
         try:
-            for index in range(len(pdf)):
-                page = pdf[index]
-                pil_image = None
+            with PDFIUM_LOCK:
+                total = len(pdf)
+            for index in range(total):
+                # Render under PDFIUM_LOCK (per page); encode outside it.
+                pil_image = pdfium_io.render_page_to_pil(pdf, index,
+                                                         scale=100 / 72)
                 try:
-                    pil_image = page.render(scale=100 / 72).to_pil()
                     if pil_image.mode != "RGB":
                         converted = pil_image.convert("RGB")
                         pil_image.close()
@@ -325,20 +310,12 @@ def pdf_to_html(input_path: str, output: str, password: Optional[str] = None,
                             base64.b64encode(buffer.getvalue()).decode("ascii")
                         )
                 finally:
-                    if pil_image is not None:
-                        try:
-                            pil_image.close()
-                        except Exception:
-                            pass
                     try:
-                        page.close()
+                        pil_image.close()
                     except Exception:
                         pass
         finally:
-            try:
-                pdf.close()
-            except Exception:
-                pass
+            pdfium_io.close_pdf(pdf)
 
     stem = os.path.splitext(os.path.basename(input_path))[0]
     parts = [
@@ -377,11 +354,13 @@ def pdf_to_csv_text(input_path: str, output: str, password: Optional[str] = None
     for roughly tabular text but makes no attempt to detect real table
     geometry. Returns the output path.
     """
-    pdf = _open_pdfium(input_path, password)
+    pdf = pdfium_io.open_pdf(input_path, password)
     try:
+        with PDFIUM_LOCK:
+            total = len(pdf)
         with open(output, "w", encoding="utf-8", newline="") as fh:
             writer = csv.writer(fh)
-            for index in range(len(pdf)):
+            for index in range(total):
                 text = _extract_page_text(pdf, index)
                 for line in text.splitlines():
                     cells = [cell.strip() for cell in _COLUMN_SPLIT.split(line)]
@@ -389,10 +368,7 @@ def pdf_to_csv_text(input_path: str, output: str, password: Optional[str] = None
                     if cells:
                         writer.writerow(cells)
     finally:
-        try:
-            pdf.close()
-        except Exception:
-            pass
+        pdfium_io.close_pdf(pdf)
     return output
 
 
@@ -472,9 +448,10 @@ def compress_pdf_raster(input_path: str, output: str, dpi: int = 110,
     if dpi <= 0:
         raise ValueError("dpi must be a positive number.")
 
-    pdf = _open_pdfium(input_path, password)
+    pdf = pdfium_io.open_pdf(input_path, password)
     try:
-        total = len(pdf)
+        with PDFIUM_LOCK:
+            total = len(pdf)
         if total == 0:
             raise ValueError("The PDF has no pages.")
 
@@ -483,11 +460,10 @@ def compress_pdf_raster(input_path: str, output: str, dpi: int = 110,
         scale = dpi / 72
 
         for index in range(total):
-            page = pdf[index]
-            pil_image = None
+            # pdfium work under the (per-page) lock; JPEG re-encode outside.
+            width_pt, height_pt = pdfium_io.get_page_size(pdf, index)
+            pil_image = pdfium_io.render_page_to_pil(pdf, index, scale)
             try:
-                width_pt, height_pt = page.get_size()
-                pil_image = page.render(scale=scale).to_pil()
                 if pil_image.mode != "RGB":
                     converted = pil_image.convert("RGB")
                     pil_image.close()
@@ -500,13 +476,8 @@ def compress_pdf_raster(input_path: str, output: str, dpi: int = 110,
                     out_pdf.add_page(format=(width_pt, height_pt))
                     out_pdf.image(buffer, x=0, y=0, w=width_pt, h=height_pt)
             finally:
-                if pil_image is not None:
-                    try:
-                        pil_image.close()
-                    except Exception:
-                        pass
                 try:
-                    page.close()
+                    pil_image.close()
                 except Exception:
                     pass
             _report(progress_cb, index + 1, total, f"{index + 1}/{total}")
@@ -515,10 +486,7 @@ def compress_pdf_raster(input_path: str, output: str, dpi: int = 110,
 
         out_pdf.output(output)
     finally:
-        try:
-            pdf.close()
-        except Exception:
-            pass
+        pdfium_io.close_pdf(pdf)
     return output
 
 

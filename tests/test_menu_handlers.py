@@ -120,8 +120,28 @@ def test_run_task_reports_progress_and_done():
     thread.join(timeout=5)
     assert not thread.is_alive()
 
-    assert (('-TASK-', 'PROGRESS'), (50, 'halfway')) in window.events
-    assert (('-TASK-', 'DONE'), 42) in window.events
+    key = thread.task_key
+    assert tasks.is_task_event((key, 'DONE'))
+    assert ((key, 'PROGRESS'), (50, 'halfway')) in window.events
+    assert ((key, 'DONE'), 42) in window.events
+
+
+def test_run_task_mints_unique_keys_per_invocation():
+    window = FakeWindow()
+
+    def job():
+        return 'ok'
+
+    thread_a = tasks.run_task(window, job)
+    thread_b = tasks.run_task(window, job)
+    thread_a.join(timeout=5)
+    thread_b.join(timeout=5)
+
+    assert thread_a.task_key != thread_b.task_key
+    assert thread_a.task_key[0] == tasks.TASK_KEY
+    assert thread_b.task_key[0] == tasks.TASK_KEY
+    assert ((thread_a.task_key, 'DONE'), 'ok') in window.events
+    assert ((thread_b.task_key, 'DONE'), 'ok') in window.events
 
 
 def test_run_task_reports_error_traceback():
@@ -130,10 +150,11 @@ def test_run_task_reports_error_traceback():
     def bad_job():
         raise RuntimeError('kaboom')
 
-    thread = tasks.run_task(window, bad_job, key='-OTHER-')
+    thread = tasks.run_task(window, bad_job)
     thread.join(timeout=5)
 
-    error_events = [e for e in window.events if e[0] == ('-OTHER-', 'ERROR')]
+    error_events = [e for e in window.events
+                    if e[0] == (thread.task_key, 'ERROR')]
     assert len(error_events) == 1
     assert 'kaboom' in error_events[0][1]
     assert 'RuntimeError' in error_events[0][1]
@@ -147,7 +168,7 @@ def test_run_task_without_progress_cb_parameter():
 
     thread = tasks.run_task(window, plain_job, 1, b=2)
     thread.join(timeout=5)
-    assert (('-TASK-', 'DONE'), 3) in window.events
+    assert ((thread.task_key, 'DONE'), 3) in window.events
 
 
 def test_run_task_is_daemon_and_nonblocking():
@@ -162,4 +183,30 @@ def test_run_task_is_daemon_and_nonblocking():
     assert thread.daemon
     assert time.monotonic() - started < 0.2  # returned before job finished
     thread.join(timeout=5)
-    assert (('-TASK-', 'DONE'), 'done') in window.events
+    assert ((thread.task_key, 'DONE'), 'done') in window.events
+
+
+def test_run_task_registers_and_pops_callbacks():
+    window = FakeWindow()
+    on_done = lambda w, s, r: None          # noqa: E731
+    on_error = lambda w, s, tb: None        # noqa: E731
+
+    thread = tasks.run_task(window, lambda: 1,
+                            on_done=on_done, on_error=on_error)
+    thread.join(timeout=5)
+
+    assert tasks.pop_callbacks(thread.task_key) == (on_done, on_error)
+    # Second pop: already consumed.
+    assert tasks.pop_callbacks(thread.task_key) == (None, None)
+
+
+def test_is_task_event_shapes():
+    key = tasks.next_task_key()
+    assert tasks.is_task_event((key, 'DONE'))
+    assert tasks.is_task_event((key, 'PROGRESS'))
+    assert tasks.is_task_event((key, 'ERROR'))
+    assert not tasks.is_task_event((key, 'OTHER'))
+    assert not tasks.is_task_event(('-TASK-', 'DONE'))       # legacy shape
+    assert not tasks.is_task_event(('-THUMB-', 1, 'CLICK'))  # 3-tuple event
+    assert not tasks.is_task_event('MENU_OPEN')
+    assert not tasks.is_task_event(None)

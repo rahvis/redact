@@ -97,11 +97,19 @@ class FakeWindow:
         self.events.append((key, value))
 
 
-def _done_payload(window, key=sign_handlers.TASK_KEY):
+def _done_payload(window):
     payloads = [value for (event, value) in window.events
-                if event == (key, 'DONE')]
+                if tasks.is_task_event(event) and event[1] == 'DONE']
     assert payloads, f'no DONE event; events: {window.events}'
     return payloads[0]
+
+
+def _pop_on_done(thread):
+    """Pop the on_done callback registered for the thread's task key,
+    exactly like main.py's DONE handling would."""
+    on_done, _on_error = tasks.pop_callbacks(thread.task_key)
+    assert callable(on_done)
+    return on_done
 
 
 # ---------------------------------------------------------------------------
@@ -337,7 +345,7 @@ def test_cert_sign_wrapper_reprompts_on_bad_password(tmp_path, credentials,
     assert payload['error'] == sign_handlers.P12_PASSWORD_ERROR
 
     # Simulate main.py's DONE handling: pop and invoke the callback.
-    callback = state.task_callbacks.pop(sign_handlers.TASK_KEY)
+    callback = _pop_on_done(thread)
     callback(window, state, payload)
     assert errors, 'friendly error popup expected'
     assert len(dialog_calls) == 2, 'dialog should be re-opened'
@@ -366,7 +374,7 @@ def test_validate_sigs_wrapper_shows_results(tmp_path, credentials,
     thread.join(timeout=30)
 
     payload = _done_payload(window)
-    callback = state.task_callbacks.pop(sign_handlers.TASK_KEY)
+    callback = _pop_on_done(thread)
     callback(window, state, payload)
     assert shown and shown[0][0]['intact'] is True
     assert shown[0][0]['signer_cn'] == TEST_CN
@@ -449,7 +457,7 @@ def test_fill_form_core_via_run_task(tmp_path):
 
     assert _done_payload(window) == out
     progress_events = [e for e in window.events
-                       if e[0] == (sign_handlers.TASK_KEY, 'PROGRESS')]
+                       if e[0] == (thread.task_key, 'PROGRESS')]
     assert progress_events, 'progress_cb should be injected and used'
 
 
@@ -501,7 +509,7 @@ def test_fill_form_wrapper_end_to_end(tmp_path, monkeypatch):
     payload = _done_payload(window)
     assert payload == out
 
-    callback = state.task_callbacks.pop(sign_handlers.TASK_KEY)
+    callback = _pop_on_done(thread)
     callback(window, state, payload)
     assert offered == [out]
 

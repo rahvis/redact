@@ -19,11 +19,13 @@ import os
 import shutil
 from typing import Callable, Iterable, Optional, Sequence
 
-import pypdfium2 as pdfium
 import pytesseract
 from fpdf import FPDF
 from PIL import Image
 from pypdf import PdfReader, PdfWriter, Transformation
+
+from workonward_read import pdfium_io
+from workonward_read.pdfium_io import PDFIUM_LOCK
 
 # Common install locations checked when tesseract is neither user-configured
 # nor on PATH (macOS Homebrew, macOS/Linux /usr/local, Windows default).
@@ -290,35 +292,26 @@ def make_searchable_pdf(input: str, output: str, lang: str = 'eng',
         raise RuntimeError('Tesseract OCR binary not found. '
                            'Install tesseract or configure its path.')
 
-    try:
-        document = pdfium.PdfDocument(input, password=password)
-    except pdfium.PdfiumError as exc:
-        raise ValueError('Could not open PDF (wrong password or corrupt '
-                         'file): {}'.format(exc))
+    document = pdfium_io.open_pdf(input, password=password)
 
     try:
-        page_count = len(document)
+        with PDFIUM_LOCK:
+            page_count = len(document)
         if page_count == 0:
             raise ValueError('Document has no pages to OCR.')
 
-        page_sizes_pt = []
-        for index in range(page_count):
-            page = document.get_page(index)
-            try:
-                page_sizes_pt.append(page.get_size())
-            finally:
-                page.close()
+        page_sizes_pt = [pdfium_io.get_page_size(document, index)
+                         for index in range(page_count)]
 
         def rendered_pages():
-            """Lazily render pages so only one bitmap is alive at a time."""
+            """Lazily render pages so only one bitmap is alive at a time.
+
+            Each render holds PDFIUM_LOCK for its own page only, so the
+            slow OCR between pages never blocks other pdfium users.
+            """
             for index in range(page_count):
-                page = document.get_page(index)
-                try:
-                    bitmap = page.render(scale=dpi / 72.0)
-                    pil_image = bitmap.to_pil()
-                    bitmap.close()
-                finally:
-                    page.close()
+                pil_image = pdfium_io.render_page_to_pil(
+                    document, index, scale=dpi / 72.0)
                 yield pil_image
                 pil_image.close()
 
@@ -326,4 +319,4 @@ def make_searchable_pdf(input: str, output: str, lang: str = 'eng',
             rendered_pages(), page_sizes_pt, output,
             lang=lang, tess_path=tess_path, progress_cb=progress_cb)
     finally:
-        document.close()
+        pdfium_io.close_pdf(document)

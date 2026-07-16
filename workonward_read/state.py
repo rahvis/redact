@@ -11,6 +11,7 @@ Licensed under GPL-3.0
 Acrobat-suite additions (c) 2026 CoverUP contributors
 """
 
+import os
 from dataclasses import dataclass, field
 
 
@@ -38,4 +39,36 @@ class AppState:
     import_ppi: int = 200                             # render resolution for imports
     workfile_manager: object | None = None            # workfile.WorkfileManager
     icons: dict = field(default_factory=dict)         # toolbar icon bytes by name
-    task_callbacks: dict = field(default_factory=dict)  # task key -> completion callable
+    # Busy set of reasons: background tasks currently USING the loaded
+    # document (state.images / state.journal). Document-mutating and
+    # document-consuming entry points refuse to start while non-empty
+    # (dialogs.common.require_document_free).
+    doc_lock: set = field(default_factory=set)
+    # Registered non-modal secondary windows:
+    # sg.Window -> handler(window, state, event, values) -> bool keep_open.
+    # main.py's read_all_windows loop routes their events (aux-window
+    # contract in docs/dev-architecture.md).
+    aux_windows: dict = field(default_factory=dict)
+
+    # --- helpers ----------------------------------------------------------
+
+    def password_for(self, path):
+        """Password for ``path`` when it is the loaded (encrypted) document.
+
+        Paths are compared via ``os.path.abspath`` + ``os.path.normcase`` so
+        relative spellings and case-insensitive filesystems match the loaded
+        ``file_path``. Returns None for any other file.
+        """
+        if not path or not self.file_path:
+            return None
+        canonical = os.path.normcase(os.path.abspath(str(path)))
+        loaded = os.path.normcase(os.path.abspath(str(self.file_path)))
+        return self.source_password if canonical == loaded else None
+
+    def acquire_doc(self, reason):
+        """Mark the loaded document as in use by a background task."""
+        self.doc_lock.add(reason)
+
+    def release_doc(self, reason):
+        """Release a doc-lock reason (tolerates double release)."""
+        self.doc_lock.discard(reason)

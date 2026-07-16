@@ -5,9 +5,9 @@ The window-facing handlers are thin wrappers: they open the dialogs in
 :mod:`workonward_read.dialogs.protect` and delegate to the module-level cores
 (``set_passwords_task``, ``remove_password_with_retries``,
 ``sanitize_task``) which are headless-testable. Slow operations run on a
-background thread via :func:`workonward_read.tasks.run_task`; completion
-callbacks are stored in ``state.task_callbacks`` and invoked by main.py's
-``('-TASK-', 'DONE')`` handling.
+background thread via :func:`workonward_read.tasks.run_task` with the
+``on_done`` completion callback registered per unique task key; main.py's
+task-event handling invokes it on DONE.
 
 Licensed under GPL-3.0
 (c) 2024 - 2026 Björn Seipel
@@ -30,17 +30,6 @@ REMOVE_PASSWORD_MAX_ATTEMPTS = 3
 # Headless cores
 # ---------------------------------------------------------------------------
 
-def source_password(request, state):
-    """Return the password of the (possibly encrypted) source file.
-
-    The password kept in ``state.source_password`` only applies when the
-    request targets the currently loaded document.
-    """
-    if state.file_path and request.get('input') == state.file_path:
-        return state.source_password
-    return None
-
-
 def set_passwords_task(request, state, progress_cb=None):
     """Encrypt ``request['input']`` to ``request['output']`` (AES-256).
 
@@ -56,7 +45,7 @@ def set_passwords_task(request, state, progress_cb=None):
         allow_print=request.get('allow_print', True),
         allow_copy=request.get('allow_copy', False),
         allow_modify=request.get('allow_modify', False),
-        password=source_password(request, state),
+        password=state.password_for(request.get('input')),
     )
     if progress_cb:
         progress_cb(100, _('Done'))
@@ -106,7 +95,7 @@ def sanitize_task(request, state, progress_cb=None):
         progress_cb(10, _('Sanitizing…'))
     report = pdf_ops.sanitize(
         request['input'], request['output'],
-        password=source_password(request, state),
+        password=state.password_for(request.get('input')),
         strip_metadata=request.get('strip_metadata', True),
         strip_annotations=request.get('strip_annotations', True),
         strip_attachments=request.get('strip_attachments', True),
@@ -118,7 +107,7 @@ def sanitize_task(request, state, progress_cb=None):
 
 
 # ---------------------------------------------------------------------------
-# Completion callbacks (main.py invokes these on ('-TASK-', 'DONE'))
+# Completion callbacks (main.py invokes these on the task's DONE event)
 # ---------------------------------------------------------------------------
 
 def _after_set_passwords(window, state, result):
@@ -143,9 +132,8 @@ def set_passwords(window, state):
     request = protect_dialogs.set_passwords_dialog(window, state)
     if request is None:
         return
-    state.busy = True
-    state.task_callbacks['-TASK-'] = _after_set_passwords
-    run_task(window, set_passwords_task, request, state)
+    run_task(window, set_passwords_task, request, state,
+             on_done=_after_set_passwords)
 
 
 def remove_password(window, state):
@@ -175,9 +163,8 @@ def sanitize(window, state):
     request = protect_dialogs.sanitize_dialog(window, state)
     if request is None:
         return
-    state.busy = True
-    state.task_callbacks['-TASK-'] = _after_sanitize
-    run_task(window, sanitize_task, request, state)
+    run_task(window, sanitize_task, request, state,
+             on_done=_after_sanitize)
 
 
 HANDLERS = {

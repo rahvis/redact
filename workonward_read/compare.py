@@ -16,9 +16,11 @@ import difflib
 import os
 from dataclasses import dataclass, field
 
-import pypdfium2 as pdfium
 from fpdf import FPDF
 from PIL import Image, ImageChops
+
+from workonward_read import pdfium_io
+from workonward_read.pdfium_io import PDFIUM_LOCK
 
 # Side length of the clustering grid cells in rendered pixels.
 _CELL = 16
@@ -50,33 +52,10 @@ class CompareResult:
     identical: bool = False
 
 
-def _open_pdf(pdf_path, password=None):
-    """Open a PDF with pypdfium2, translating password failures to ValueError."""
-    try:
-        if password:
-            return pdfium.PdfDocument(pdf_path, password=password)
-        return pdfium.PdfDocument(pdf_path)
-    except pdfium.PdfiumError as exc:
-        message = str(exc).lower()
-        if "password" in message or "encrypt" in message:
-            raise ValueError(
-                "The PDF is encrypted and requires a valid password."
-            ) from exc
-        raise
-
-
 def _render_page(pdf, page_index, dpi, grayscale=True):
-    """Render one page to a PIL image at the given dpi."""
-    page = pdf[page_index]
-    try:
-        image = page.render(scale=dpi / 72.0, grayscale=grayscale).to_pil()
-        if grayscale and image.mode != "L":
-            converted = image.convert("L")
-            image.close()
-            image = converted
-        return image
-    finally:
-        page.close()
+    """Render one page to a PIL image at the given dpi (under PDFIUM_LOCK)."""
+    return pdfium_io.render_page_to_pil(pdf, page_index, scale=dpi / 72.0,
+                                        grayscale=grayscale)
 
 
 def _pad_to(image, size):
@@ -164,12 +143,13 @@ def compare_pdfs(path_a, path_b, dpi=100, threshold=24, password_a=None,
     Raises:
         ValueError: If a PDF is encrypted and its password is missing or wrong.
     """
-    pdf_a = _open_pdf(path_a, password_a)
+    pdf_a = pdfium_io.open_pdf(path_a, password_a)
     try:
-        pdf_b = _open_pdf(path_b, password_b)
+        pdf_b = pdfium_io.open_pdf(path_b, password_b)
         try:
-            count_a = len(pdf_a)
-            count_b = len(pdf_b)
+            with PDFIUM_LOCK:
+                count_a = len(pdf_a)
+                count_b = len(pdf_b)
             total = max(count_a, count_b)
             pages = []
             identical = count_a == count_b
@@ -198,11 +178,8 @@ def compare_pdfs(path_a, path_b, dpi=100, threshold=24, password_a=None,
                 else:
                     # Extra page in exactly one document: fully changed.
                     source = pdf_a if page_index < count_a else pdf_b
-                    page = source[page_index]
-                    try:
-                        width_pt, height_pt = page.get_size()
-                    finally:
-                        page.close()
+                    width_pt, height_pt = pdfium_io.get_page_size(source,
+                                                                  page_index)
                     width_px = max(1, round(width_pt * dpi / 72.0))
                     height_px = max(1, round(height_pt * dpi / 72.0))
                     ratio = 1.0
@@ -221,9 +198,9 @@ def compare_pdfs(path_a, path_b, dpi=100, threshold=24, password_a=None,
             return CompareResult(page_count_a=count_a, page_count_b=count_b,
                                  pages=pages, identical=identical)
         finally:
-            pdf_b.close()
+            pdfium_io.close_pdf(pdf_b)
     finally:
-        pdf_a.close()
+        pdfium_io.close_pdf(pdf_a)
 
 
 def text_diff(path_a, path_b, password_a=None, password_b=None):
@@ -236,22 +213,26 @@ def text_diff(path_a, path_b, password_a=None, password_b=None):
         ValueError: If a PDF is encrypted and its password is missing or wrong.
     """
     def extract_lines(pdf_path, password):
-        pdf = _open_pdf(pdf_path, password)
+        pdf = pdfium_io.open_pdf(pdf_path, password)
         try:
+            with PDFIUM_LOCK:
+                total = len(pdf)
             lines = []
-            for page_index in range(len(pdf)):
-                page = pdf[page_index]
-                textpage = None
-                try:
-                    textpage = page.get_textpage()
-                    lines.extend(textpage.get_text_range().splitlines())
-                finally:
-                    if textpage is not None:
-                        textpage.close()
-                    page.close()
+            for page_index in range(total):
+                # Per-page lock: pdfium call sequences must be serialized.
+                with PDFIUM_LOCK:
+                    page = pdf[page_index]
+                    textpage = None
+                    try:
+                        textpage = page.get_textpage()
+                        lines.extend(textpage.get_text_range().splitlines())
+                    finally:
+                        if textpage is not None:
+                            textpage.close()
+                        page.close()
             return lines
         finally:
-            pdf.close()
+            pdfium_io.close_pdf(pdf)
 
     lines_a = extract_lines(path_a, password_a)
     lines_b = extract_lines(path_b, password_b)
@@ -283,9 +264,9 @@ def export_diff_report(result, path_a, path_b, output_pdf, dpi=100,
         password_a: Optional password for the first PDF.
         password_b: Optional password for the second PDF.
     """
-    pdf_a = _open_pdf(path_a, password_a)
+    pdf_a = pdfium_io.open_pdf(path_a, password_a)
     try:
-        pdf_b = _open_pdf(path_b, password_b)
+        pdf_b = pdfium_io.open_pdf(path_b, password_b)
         try:
             report = FPDF(orientation="landscape", unit="pt", format="A4")
             report.set_auto_page_break(False)
@@ -346,6 +327,6 @@ def export_diff_report(result, path_a, path_b, output_pdf, dpi=100,
 
             report.output(str(output_pdf))
         finally:
-            pdf_b.close()
+            pdfium_io.close_pdf(pdf_b)
     finally:
-        pdf_a.close()
+        pdfium_io.close_pdf(pdf_a)

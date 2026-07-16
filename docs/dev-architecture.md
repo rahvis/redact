@@ -6,7 +6,7 @@ conform; integration relies on these exact shapes. Python: `.venv/bin/python` (3
 ## Layering rule (enforced by tests/test_purity.py)
 
 Business modules — `pdf_ops`, `annotations`, `convert`, `ocr`, `signing`, `forms`,
-`compare`, `search`, `geometry` — never import FreeSimpleGUI or tkinter. GUI modules (`main`, `ui`,
+`compare`, `search`, `geometry`, `pdfium_io` — never import FreeSimpleGUI or tkinter. GUI modules (`main`, `ui`,
 `menu`, `dialogs/*`, `handlers/*`, `canvas_tools`, `thumbnails`, `tasks`, `state`) may
 import business modules. All user-visible strings live in GUI modules via `i18n._()`;
 business modules raise exceptions with plain-English messages and return data.
@@ -68,6 +68,25 @@ class AppState:
     busy: bool = False
     thumbnails_visible: bool = False
 ```
+
+Runtime-only helpers (not persisted): `import_ppi`, `workfile_manager`,
+`icons`, plus the orchestration fields:
+
+- `doc_lock: set` — busy set of reasons for background tasks currently
+  USING the loaded document (`state.images` / `state.journal`), managed via
+  `state.acquire_doc(reason)` / `state.release_doc(reason)`. Document-
+  MUTATING and document-CONSUMING entry points (organize page ops,
+  OCR-current-doc, save/export/print, open) call
+  `dialogs.common.require_document_free(window, state)` first; while the set
+  is non-empty they refuse with an info popup ("Another operation is using
+  the document — wait for it to finish."). File->file tools (merge / split /
+  extract / compress / batch on picked files) stay allowed concurrently.
+  The legacy `busy` bool is superseded by `doc_lock` and no longer written.
+- `aux_windows: dict` — the aux-window registry (see "Aux windows" below).
+- `state.password_for(path)` — returns `source_password` when `path` is the
+  loaded document (`os.path.abspath` + `os.path.normcase` comparison against
+  `file_path`), else None. The single helper used by review / convert /
+  organize / protect / sign for password-for-loaded-file resolution.
 
 ## Handler registry (`workonward_read/handlers/`)
 
@@ -199,21 +218,84 @@ search-hit remapping (`handlers.review.remap_hit_location`, which feeds
 ## Background tasks (`workonward_read/tasks.py`)
 
 ```python
-run_task(window, fn, *args, key='-TASK-', **kwargs)
+run_task(window, fn, *args, on_done=None, on_error=None, **kwargs)
+    -> threading.Thread   # thread.task_key = ('-TASK-', seq)
 ```
-Daemon thread; worker communicates ONLY via
-`window.write_event_value((key, 'PROGRESS'), (pct, msg))`, `((key,'DONE'), result)`,
-`((key,'ERROR'), traceback_str)`. Business functions accept `progress_cb(pct, msg)`.
-main.py handles these tuple events (progress bar, popup on error, completion callbacks
-stored in a dict on state).
+Every invocation mints a UNIQUE key `('-TASK-', seq)` (monotonic sequence
+counter — deterministic, never reused), so concurrent tasks cannot collide.
+The daemon-thread worker communicates ONLY via
+`window.write_event_value((key, 'PROGRESS'), (pct, msg))`, `((key,'DONE'),
+result)`, `((key,'ERROR'), traceback_str)`. Business functions accept
+`progress_cb(pct, msg)`. Callers always pass the MAIN window.
+
+`on_done(window, state, result)` / `on_error(window, state, traceback_str)`
+are registered by `run_task` itself in a registry owned by `tasks`
+(`tasks.pop_callbacks(key)`); handlers never touch a shared registry key.
+main.py routes any event matching `tasks.is_task_event(event)` — from ANY
+window — through `_handle_task_event`: PROGRESS updates the shared
+`-PROGRESS-` bar (concurrent tasks: last progress report wins), ERROR runs
+the `on_error` cleanup hook first and then shows the standard error popup,
+DONE invokes `on_done`. Tasks that consume the loaded document additionally
+hold a `state.doc_lock` reason for their whole duration, released in both
+`on_done` and `on_error` (see AppState above).
+
+## Aux windows (non-modal secondary windows)
+
+The main event loop reads ALL open windows via `sg.read_all_windows()`
+(no timeout — blocks exactly like `window.read()`; `write_event_value`
+events are per-window queued and arrive attributed to the window they were
+written to). Non-modal secondary windows follow this contract:
+
+```python
+state.aux_windows: dict[sg.Window, handler_fn]
+handler_fn(window, state, event, values) -> bool   # True = keep open
+```
+
+The opening handler creates the window (`modal=False`, finalized),
+registers it in `state.aux_windows` and RETURNS IMMEDIATELY — no nested
+read loops. main.py routes each event to the owning window's handler; when
+the handler returns falsy (or the window is closed / unregistered) the loop
+closes and unregisters it. Background work started from an aux handler runs
+via `tasks.run_task` against the MAIN window; the DONE/ERROR callbacks must
+check `aux_window.was_closed()` before touching its elements. Current aux
+windows: the search finder and the compare results window
+(`handlers/review.py`). Modal dialogs (`dialogs/*`) are intentionally
+blocking and stay as-is.
 
 ## Dialogs (`workonward_read/dialogs/`)
 
 One module per group mirroring handlers. Each dialog: `modal=True, keep_on_top=True`,
 centered via `workonward_read.dialogs.common.centered(parent_window)`, returns a plain request
 dict or None. Shared helpers in `workonward_read/dialogs/common.py`: `centered`, `error_popup`,
-`info_popup`, `file_open_row`, `parse_page_ranges("1-3,7,9-") -> list[int]` (0-based,
+`info_popup`, `require_document_free`, `file_open_row`,
+`parse_page_ranges("1-3,7,9-") -> list[int]` (0-based,
 open-ended supported, raises ValueError with offending token).
+
+## pdfium access (`workonward_read/pdfium_io.py`)
+
+pdfium is NOT thread-safe; every in-process pdfium call sequence must hold
+the module-level `PDFIUM_LOCK` (an `RLock`). The business module
+`pdfium_io` owns the lock and the ONE canonical open helper:
+
+```python
+PDFIUM_LOCK                                  # threading.RLock
+PASSWORD_ERROR                               # canonical message
+open_pdf(path, password=None) -> PdfDocument # FileNotFoundError / ValueError
+close_pdf(doc)                               # close under lock, best effort
+pdfium_session(path, password=None)          # ctx mgr: doc under the lock
+page_count(doc); get_page_size(doc, index)
+render_page_to_pil(doc_or_path, index, scale,
+                   jpeg_roundtrip=False, grayscale=False, password=None)
+```
+
+`search`, `compare`, `convert`, `page_render`, `ocr` and `document_loader`
+open PDFs exclusively through `pdfium_io` (password failures raise
+`ValueError(PASSWORD_ERROR)`, missing files `FileNotFoundError`, other open
+failures `ValueError('Could not open PDF: …')`). Long render/extract loops
+acquire the lock PER PAGE so they don't starve other pdfium users.
+Exception: `document_loader._render_pdf_page` runs in ProcessPoolExecutor
+worker PROCESSES — each has its own pdfium instance and address space, so
+no lock is needed (nor shareable) there.
 
 ## i18n
 

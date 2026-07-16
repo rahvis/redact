@@ -47,6 +47,22 @@ def info_popup(window, message):
     )
 
 
+def require_document_free(window, state):
+    """Entry guard for document-mutating/consuming operations.
+
+    Returns True when no background task is currently using the loaded
+    document (``state.doc_lock`` busy set is empty). Otherwise shows an
+    info popup and returns False. Page ops, OCR-current-doc and save/export
+    check this; file->file tools (merge/split/compress on picked files)
+    intentionally do not.
+    """
+    if getattr(state, 'doc_lock', None):
+        info_popup(window, _('Another operation is using the document — '
+                             'wait for it to finish.'))
+        return False
+    return True
+
+
 def not_yet(window, state):
     """Shared placeholder handler for tools that arrive in a later wave."""
     info_popup(window, _('This tool arrives in the next build step.'))

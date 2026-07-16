@@ -26,7 +26,8 @@ import os
 from workonward_read import convert, page_render, pdf_ops, tasks, thumbnails
 from workonward_read.dialogs import organize as dialogs
 from workonward_read.dialogs.common import (error_popup, info_popup,
-                                            parse_page_ranges)
+                                            parse_page_ranges,
+                                            require_document_free)
 from workonward_read.i18n import _
 
 
@@ -350,23 +351,6 @@ def _require_document(window, state):
     return True
 
 
-def _source_password(state, path):
-    """Password for `path` when it is the loaded (encrypted) document."""
-    if path and state.file_path and \
-            os.path.abspath(path) == os.path.abspath(state.file_path):
-        return state.source_password
-    return None
-
-
-def _run_in_background(window, state, fn, *args, on_done=None, **kwargs):
-    """Start fn via tasks.run_task and register the completion callback the
-    way main.py's task-event handling expects."""
-    state.busy = True
-    if on_done is not None:
-        state.task_callbacks['-TASK-'] = on_done
-    tasks.run_task(window, fn, *args, **kwargs)
-
-
 def _human_size(num_bytes):
     value = float(num_bytes)
     for unit in ('B', 'KB', 'MB', 'GB'):
@@ -387,7 +371,7 @@ def merge(window, state):
         return
     passwords = {}
     for path in request['inputs']:
-        password = _source_password(state, path)
+        password = state.password_for(path)
         if password:
             passwords[path] = password
 
@@ -396,8 +380,8 @@ def merge(window, state):
         info_popup(win, _('Merged {pages} pages into\n{path}',
                           pages=pages, path=output))
 
-    _run_in_background(window, state, merge_core, request,
-                       passwords=passwords, on_done=on_done)
+    tasks.run_task(window, merge_core, request,
+                   passwords=passwords, on_done=on_done)
 
 
 def split(window, state):
@@ -405,14 +389,14 @@ def split(window, state):
     request = dialogs.split_dialog(window, default_input=state.file_path or '')
     if not request:
         return
-    password = _source_password(state, request['input'])
+    password = state.password_for(request['input'])
 
     def on_done(win, st, outputs):
         info_popup(win, _('Wrote {count} files:\n{files}',
                           count=len(outputs), files='\n'.join(outputs)))
 
-    _run_in_background(window, state, split_core, request,
-                       password=password, on_done=on_done)
+    tasks.run_task(window, split_core, request,
+                   password=password, on_done=on_done)
 
 
 def extract(window, state):
@@ -420,20 +404,26 @@ def extract(window, state):
     request = dialogs.extract_dialog(window, default_input=state.file_path or '')
     if not request:
         return
-    password = _source_password(state, request['input'])
+    password = state.password_for(request['input'])
 
     def on_done(win, st, result):
         output, pages = result
         info_popup(win, _('Extracted {pages} pages into\n{path}',
                           pages=pages, path=output))
 
-    _run_in_background(window, state, extract_core, request,
-                       password=password, on_done=on_done)
+    tasks.run_task(window, extract_core, request,
+                   password=password, on_done=on_done)
 
 
 def _loaded_doc_op(window, state, dialog_fn, core_fn):
-    """Shared wrapper for loaded-document page ops."""
+    """Shared wrapper for loaded-document page ops.
+
+    Refuses to run while a background task is using the loaded document
+    (doc-lock busy set) — page ops mutate ``state.images`` / the journal.
+    """
     if not _require_document(window, state):
+        return
+    if not require_document_free(window, state):
         return
     request = dialog_fn()
     if not request:
@@ -505,6 +495,8 @@ def save_organized(window, state):
     if state.journal is None or state.journal.is_empty():
         info_popup(window, _('There are no page changes to save yet.'))
         return
+    if not require_document_free(window, state):
+        return
     base = os.path.splitext(os.path.basename(state.file_path))[0]
     output = sg.popup_get_file(
         _('Save Organized PDF…'), no_window=True, save_as=True,
@@ -516,12 +508,21 @@ def save_organized(window, state):
         error_popup(window, _('Please choose a different file than the source.'))
         return
 
+    # apply_journal consumes state.journal on the worker thread: hold the
+    # doc lock for the task's duration so page ops can't mutate it mid-save.
+    reason = 'save-organized'
+    state.acquire_doc(reason)
+
     def on_done(win, st, result):
+        st.release_doc(reason)
         info_popup(win, _('Saved organized PDF to\n{path}', path=output))
 
-    _run_in_background(window, state, pdf_ops.apply_journal,
-                       state.file_path, state.journal, output,
-                       state.source_password, on_done=on_done)
+    def on_error(win, st, payload):
+        st.release_doc(reason)
+
+    tasks.run_task(window, pdf_ops.apply_journal,
+                   state.file_path, state.journal, output,
+                   state.source_password, on_done=on_done, on_error=on_error)
 
 
 def compress(window, state):
@@ -534,7 +535,7 @@ def compress(window, state):
     except ValueError as exc:
         error_popup(window, _('error_occurred'), exc)
         return
-    password = _source_password(state, request['input'])
+    password = state.password_for(request['input'])
 
     def on_done(win, st, result):
         before = result['before_bytes']
@@ -545,8 +546,8 @@ def compress(window, state):
             path=result['output'], before=_human_size(before),
             after=_human_size(after), percent=percent))
 
-    _run_in_background(window, state, compress_core, request,
-                       password=password, on_done=on_done)
+    tasks.run_task(window, compress_core, request,
+                   password=password, on_done=on_done)
 
 
 def batch(window, state):
@@ -574,7 +575,7 @@ def batch(window, state):
             message += '\n\n' + _('Failed files:') + '\n' + lines
         info_popup(win, message)
 
-    _run_in_background(window, state, batch_core, request, on_done=on_done)
+    tasks.run_task(window, batch_core, request, on_done=on_done)
 
 
 def properties(window, state):
@@ -587,7 +588,7 @@ def properties(window, state):
             file_types=dialogs.PDF_FILE_TYPES)
         if not input_path:
             return
-    password = _source_password(state, input_path)
+    password = state.password_for(input_path)
     try:
         props = pdf_ops.read_properties(input_path, password=password)
     except Exception as exc:

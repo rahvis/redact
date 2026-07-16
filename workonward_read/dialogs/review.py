@@ -4,10 +4,11 @@ window, the compare-PDFs request dialog and the compare results window.
 
 ``compare_dialog`` follows the standard dialog contract (modal, keep-on-top,
 centered, returns a plain request dict or None). ``open_search_window`` and
-``open_compare_results_window`` intentionally return the created ``sg.Window``
-instead: both are driven by short event loops owned by
-:mod:`workonward_read.handlers.review` (multi-window pattern — see the module
-docstring there).
+``open_compare_results_window`` intentionally return the created NON-MODAL
+``sg.Window`` instead: both are registered as aux windows in
+``state.aux_windows`` by :mod:`workonward_read.handlers.review` and driven by
+main.py's ``read_all_windows()`` loop (aux-window contract in
+docs/dev-architecture.md).
 
 Licensed under GPL-3.0
 (c) 2024 - 2026 Björn Seipel
@@ -39,7 +40,8 @@ def open_search_window(window):
     Keys: ``-TERM-`` (entry), ``-CASE-`` (match-case checkbox), ``-FIND-``,
     ``-RESULTS-`` (hit listbox, one 'p.N: …context…' line per hit),
     ``-PREV-`` / ``-NEXT-`` (hit navigation), ``-COUNT-`` (hit counter) and
-    ``-CLOSE-``. The caller owns the event loop and must ``close()`` it.
+    ``-CLOSE-``. The caller registers it in ``state.aux_windows``; main.py's
+    loop routes its events and closes it.
     """
     layout = [
         [sg.Text(_('Find')),
@@ -132,11 +134,12 @@ def compare_dialog(window, state):
 # ---------------------------------------------------------------------------
 
 def open_compare_results_window(window, lines, verdict):
-    """Create and return the compare results window.
+    """Create and return the NON-MODAL compare results window.
 
     Keys: ``-PAGES-`` (per-page listbox), ``-EXPORT-`` (report PDF save-as),
     ``-TEXTDIFF-`` (scrollable text diff popup) and ``-CLOSE-``. The caller
-    owns the event loop and must ``close()`` it.
+    registers it in ``state.aux_windows``; main.py's loop routes its events
+    and closes it.
     """
     layout = [
         [sg.Text(verdict, key='-VERDICT-')],
@@ -148,7 +151,7 @@ def open_compare_results_window(window, lines, verdict):
          sg.Button(_('Close'), key='-CLOSE-')],
     ]
     return sg.Window(
-        _('Compare Results'), layout, modal=True, keep_on_top=True,
+        _('Compare Results'), layout, modal=False, keep_on_top=True,
         finalize=True, resizable=True, location=centered(window, 560, 400))
 
 

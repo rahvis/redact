@@ -15,7 +15,8 @@ import pypdfium2 as pdfium
 from PIL import Image
 
 from workonward_read import annotations as annotations_engine
-from workonward_read import page_render
+from workonward_read import page_render, pdfium_io
+from workonward_read.pdfium_io import PDFIUM_LOCK
 from workonward_read.image_container import ImageContainer
 from workonward_read.pdf_ops import PageOpsJournal
 from workonward_read.utils import is_valid_file_type, get_worker_count
@@ -66,6 +67,12 @@ def _render_pdf_page(args):
 
     This function runs in a separate process and must be picklable.
     It opens the PDF file independently to avoid pickling issues with PdfDocument.
+
+    NOTE: it deliberately drives pypdfium2 directly WITHOUT
+    pdfium_io.PDFIUM_LOCK — each ProcessPoolExecutor worker is a separate
+    PROCESS with its own pdfium library instance and address space, so
+    there is no shared pdfium state to serialize (and the parent process's
+    lock would not be shared across processes anyway).
 
     Args:
         args: Tuple of (file_path, page_index, scale, password)
@@ -165,12 +172,13 @@ def load_document(load_file_path, import_ppi, window, workfile_manager, show_res
     if load_file_path.lower().endswith('.pdf'):
         pdf = None
 
-        # Try to open the PDF, handle encrypted files
+        # Try to open the PDF (via pdfium_io: serialized pdfium access +
+        # canonical password error), handle encrypted files.
         try:
-            pdf = pdfium.PdfDocument(load_file_path)
-        except pdfium.PdfiumError as e:
+            pdf = pdfium_io.open_pdf(load_file_path)
+        except ValueError as e:
             # Check if the error is due to password protection
-            if "password" in str(e).lower() or "encrypted" in str(e).lower():
+            if "password" in str(e).lower():
                 # Prompt for password
                 win_loc_x, win_loc_y = window.current_location()
                 win_w, win_h = window.current_size_accurate()
@@ -183,9 +191,10 @@ def load_document(load_file_path, import_ppi, window, workfile_manager, show_res
                 )
                 if password:
                     try:
-                        pdf = pdfium.PdfDocument(load_file_path, password=password)
+                        pdf = pdfium_io.open_pdf(load_file_path,
+                                                 password=password)
                         pdf_password = password  # Store for multiprocessing
-                    except pdfium.PdfiumError:
+                    except ValueError:
                         raise ValueError(_('error_incorrect_password'))
                 else:
                     raise ValueError(_('error_password_required'))
@@ -195,10 +204,11 @@ def load_document(load_file_path, import_ppi, window, workfile_manager, show_res
         if pdf is None:
             raise ValueError(_('error_pdf_open_failed'))
 
-        total_pages = len(pdf)
-        # Close the PDF document now - we only needed it for page count
-        # Worker processes will open their own handles
-        pdf.close()
+        # We only needed the document for its page count; close it again —
+        # worker processes open their own handles.
+        with PDFIUM_LOCK:
+            total_pages = len(pdf)
+        pdfium_io.close_pdf(pdf)
         pdf = None
 
         window['-PAGE_TOTAL-'].update(total_pages)

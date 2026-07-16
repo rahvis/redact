@@ -5,9 +5,9 @@ signature validation, form filling).
 Module-level core functions (``apply_fill_sign``, ``cert_sign_core``,
 ``validate_core``, ``fill_form_core``, ``bottom_right_rect_px``) hold the
 business-facing logic and are headless-testable; the ``sg.Window``-facing
-wrappers stay thin and run the slow cores via ``tasks.run_task`` with the
-completion callback stored in ``state.task_callbacks`` (main.py's task-event
-handling calls it with ``(window, state, payload)``).
+wrappers stay thin and run the slow cores via ``tasks.run_task`` with an
+``on_done`` completion callback (main.py's task-event handling calls it
+with ``(window, state, payload)``).
 
 Licensed under GPL-3.0
 (c) 2024 - 2026 Björn Seipel
@@ -21,8 +21,6 @@ from workonward_read.dialogs import annotate as annotate_dialogs
 from workonward_read.dialogs import sign as sign_dialogs
 from workonward_read.dialogs.common import error_popup, info_popup
 from workonward_read.i18n import _
-
-TASK_KEY = '-TASK-'
 
 # Error marker returned by cert_sign_core when the PKCS#12 credentials
 # could not be loaded (wrong certificate password or unusable file).
@@ -173,13 +171,6 @@ def fill_form_core(request, progress_cb=None):
     return output
 
 
-def _source_password(state, input_path):
-    """Password for input_path when it is the loaded (encrypted) document."""
-    if input_path and input_path == state.file_path:
-        return state.source_password
-    return None
-
-
 # ---------------------------------------------------------------------------
 # Window-facing handlers
 # ---------------------------------------------------------------------------
@@ -208,7 +199,7 @@ def cert_sign(window, state):
     request = sign_dialogs.cert_sign_dialog(window, state)
     if request is None:
         return None
-    password = _source_password(state, request['input'])
+    password = state.password_for(request['input'])
     if password:
         request['password'] = password
 
@@ -224,9 +215,7 @@ def cert_sign(window, state):
                         result.get('detail'))
             cert_sign(done_window, done_state)
 
-    state.task_callbacks[TASK_KEY] = _done
-    state.busy = True
-    return tasks.run_task(window, cert_sign_core, request, key=TASK_KEY)
+    return tasks.run_task(window, cert_sign_core, request, on_done=_done)
 
 
 def validate_sigs(window, state):
@@ -234,16 +223,14 @@ def validate_sigs(window, state):
     request = sign_dialogs.validate_dialog(window, state)
     if request is None:
         return None
-    password = _source_password(state, request['input'])
+    password = state.password_for(request['input'])
     if password:
         request['password'] = password
 
     def _done(done_window, done_state, results):
         sign_dialogs.validation_results_window(done_window, results)
 
-    state.task_callbacks[TASK_KEY] = _done
-    state.busy = True
-    return tasks.run_task(window, validate_core, request, key=TASK_KEY)
+    return tasks.run_task(window, validate_core, request, on_done=_done)
 
 
 def fill_form(window, state):
@@ -252,7 +239,7 @@ def fill_form(window, state):
     if source is None:
         return None
     input_path = source['input']
-    password = _source_password(state, input_path)
+    password = state.password_for(input_path)
     try:
         fields = forms.list_fields(input_path, password=password)
     except Exception as exc:
@@ -276,9 +263,7 @@ def fill_form(window, state):
     def _done(done_window, done_state, output):
         sign_dialogs.offer_open_result(done_window, output)
 
-    state.task_callbacks[TASK_KEY] = _done
-    state.busy = True
-    return tasks.run_task(window, fill_form_core, request, key=TASK_KEY)
+    return tasks.run_task(window, fill_form_core, request, on_done=_done)
 
 
 HANDLERS = {

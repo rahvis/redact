@@ -3,11 +3,16 @@ Convert handlers for WorkOnward Read (PDF to images/text/word/html, images to
 PDF, OCR).
 
 The window-facing handlers stay thin: they open the dialogs in
-:mod:`workonward_read.dialogs.convert`, register a completion callback in
-``state.task_callbacks`` and hand the actual work to
-:func:`workonward_read.tasks.run_task`. The module-level cores
-(``run_convert``, ``run_images_to_pdf``, ``run_ocr`` and the settings
-helpers) are headless and unit-testable.
+:mod:`workonward_read.dialogs.convert` and hand the actual work to
+:func:`workonward_read.tasks.run_task` with an ``on_done`` completion
+callback. The module-level cores (``run_convert``, ``run_images_to_pdf``,
+``run_ocr`` and the settings helpers) are headless and unit-testable.
+
+OCR of the LOADED document consumes ``state.images`` on the worker thread,
+so the handler holds the document busy-set lock (``state.doc_lock``) for
+the whole task duration — document-mutating entry points (page ops,
+save/export) refuse to run meanwhile, making mid-OCR page-op races
+impossible.
 
 For OCR of the loaded document the pages are rendered through the
 ImageContainer finalize path (``finalized_image``), i.e. with every
@@ -24,7 +29,8 @@ import os
 
 from workonward_read import convert, ocr
 from workonward_read.dialogs import convert as convert_dialogs
-from workonward_read.dialogs.common import error_popup, info_popup
+from workonward_read.dialogs.common import (error_popup, info_popup,
+                                            require_document_free)
 from workonward_read.i18n import _
 from workonward_read.tasks import run_task
 from workonward_read.workfile import get_default_datadir
@@ -32,6 +38,9 @@ from workonward_read.workfile import get_default_datadir
 
 SETTINGS_FILENAME = 'settings.json'
 TESSERACT_PATH_KEY = 'tesseract_path'
+
+# state.doc_lock busy-set reason while OCR-current-document runs.
+OCR_DOC_REASON = 'ocr-current-document'
 
 
 # ---------------------------------------------------------------------------
@@ -178,8 +187,7 @@ def run_ocr(request, state, tess_path=None, progress_cb=None):
         raise ValueError('No input file was selected.')
     return ocr.make_searchable_pdf(
         input_path, output, lang=lang, tess_path=tess_path,
-        password=getattr(state, 'source_password', None)
-        if input_path == getattr(state, 'file_path', None) else None,
+        password=state.password_for(input_path),
         progress_cb=progress_cb)
 
 
@@ -197,14 +205,6 @@ def _success_message(paths):
              count=len(paths), directory=directory)
 
 
-def _start_task(window, state, fn, *args, on_done=None, **kwargs):
-    """Register the completion callback and launch fn on a worker thread."""
-    if on_done is not None:
-        state.task_callbacks['-TASK-'] = on_done
-    state.busy = True
-    run_task(window, fn, *args, **kwargs)
-
-
 def _make_convert_handler(target):
     """Build the menu handler for one conversion target."""
     def handler(window, state):
@@ -216,8 +216,7 @@ def _make_convert_handler(target):
             paths = result if isinstance(result, list) else [result]
             info_popup(win, _success_message(paths))
 
-        _start_task(window, state, run_convert, request, state,
-                    on_done=on_done)
+        run_task(window, run_convert, request, state, on_done=on_done)
     return handler
 
 
@@ -230,7 +229,7 @@ def images_to_pdf(window, state):
     def on_done(win, st, result):
         info_popup(win, _success_message([result]))
 
-    _start_task(window, state, run_images_to_pdf, request, on_done=on_done)
+    run_task(window, run_images_to_pdf, request, on_done=on_done)
 
 
 def ocr_document(window, state):
@@ -252,11 +251,26 @@ def ocr_document(window, state):
     if not request:
         return
 
+    # OCR of the LOADED document reads state.images on the worker thread:
+    # hold the doc lock for the whole task (released in on_done/on_error)
+    # so page ops / save / export cannot run concurrently.
+    use_loaded = bool(request.get('use_loaded'))
+    if use_loaded:
+        if not require_document_free(window, state):
+            return
+        state.acquire_doc(OCR_DOC_REASON)
+
     def on_done(win, st, result):
+        if use_loaded:
+            st.release_doc(OCR_DOC_REASON)
         info_popup(win, _success_message([result]))
 
-    _start_task(window, state, run_ocr, request, state,
-                on_done=on_done, tess_path=tess_path)
+    def on_error(win, st, payload):
+        if use_loaded:
+            st.release_doc(OCR_DOC_REASON)
+
+    run_task(window, run_ocr, request, state,
+             on_done=on_done, on_error=on_error, tess_path=tess_path)
 
 
 HANDLERS = {

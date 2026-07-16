@@ -25,6 +25,7 @@ from workonward_read.annotations import UndoStack
 from workonward_read.document_loader import load_document
 from workonward_read.image_container import ImageContainer, close_all_pages, finalize_pages_chunked
 from workonward_read.handlers.view import flip_to_page
+from workonward_read.dialogs.common import require_document_free
 from workonward_read.pdf_ops import PageOpsJournal
 from workonward_read.workfile import serialize_journal
 from workonward_read.i18n import _, _plural
@@ -57,7 +58,11 @@ def load_path(window, state, load_file_path, error_key='error_loading'):
     Load a document from a path into the application state.
 
     Used by the Open handler and by the CLI file argument at startup.
+    Refused while a background task is using the loaded document (loading
+    closes every page image the task might be reading).
     """
+    if not require_document_free(window, state):
+        return
     try:
         window.set_cursor('watch')
         window['-GRAPH-'].set_cursor('watch')
@@ -242,6 +247,10 @@ def _save_document(window, state, export_page):
     """Shared implementation of Save Redacted PDF / Export Current Page."""
     if not state.images:
         return
+    # Save/export consume state.images page by page: refuse while a
+    # background task (e.g. OCR-current-doc) is using the document.
+    if not require_document_free(window, state):
+        return
 
     # Pre-fill with the loaded filename
     default_filename = ""
@@ -326,6 +335,8 @@ def print_document(window, state):
     pipeline and hand it to the OS default viewer for printing.
     """
     if not state.images:
+        return
+    if not require_document_free(window, state):
         return
 
     fd, tmp_path = tempfile.mkstemp(prefix='workonward_read_print_', suffix='.pdf')

@@ -1,27 +1,24 @@
 """
 Review handlers for WorkOnward Read: in-document search and PDF compare.
 
-Multi-window integration note (MENU_SEARCH)
--------------------------------------------
-The search finder is a second, NON-MODAL ``sg.Window``. ``main.py``'s single
-event loop reads only the main window and must not be modified, so the finder
-gets its own short event loop INSIDE the handler: a modal-less
-``finder.read(timeout=100)`` loop that runs until the finder is closed. The
-background search started with :func:`workonward_read.tasks.run_task` reports its
-tuple events (``('-SEARCH-', 'PROGRESS'/'DONE'/'ERROR')``) directly to the
-finder window, so no main-loop dispatch (and no ``state.task_callbacks``
-entry) is needed for it — the least invasive approach available without
-touching ``main.py``. The main window stays visible (and hit navigation
-flips its pages / draws on its graph), it just does not dispatch its own
-events while the finder is open.
+Multi-window integration note
+-----------------------------
+Both the search finder (MENU_SEARCH) and the compare results window
+(MENU_COMPARE) are NON-MODAL secondary windows following the aux-window
+contract (docs/dev-architecture.md): the handler creates the window,
+registers ``state.aux_windows[window] = handler_fn`` and returns
+immediately. ``main.py``'s ``read_all_windows()`` loop routes the window's
+events to the handler, which returns True to stay open; on a falsy return
+(or when the window is closed) the loop closes and unregisters it. There
+are NO nested event loops here, so the main window keeps dispatching its
+own events while these windows are open.
 
-MENU_COMPARE follows the standard single-loop pattern instead: the request
-dialog is modal, ``compare.compare_pdfs`` runs via ``run_task`` with the MAIN
-window and the default ``'-TASK-'`` key (progress bar + error popup handled
-by ``main.py``), and the completion callback stored in
-``state.task_callbacks['-TASK-']`` opens the results window, which — being a
-leaf modal window — again has its own small loop for the export / text-diff
-buttons.
+All background work (the search itself, ``compare.compare_pdfs``, the
+report export and the text diff) runs via ``tasks.run_task`` against the
+MAIN window under per-invocation unique task keys; results arrive through
+the ``on_done`` callbacks that main.py's central task handling invokes.
+Export and text diff disable their buttons while running and re-enable
+them from the DONE/ERROR callbacks.
 
 Module-level core functions (``perform_search``, ``hit_rect_to_graph``,
 ``run_compare``, ``build_result_lines``, ``export_report`` …) are headless
@@ -49,9 +46,6 @@ from workonward_read.tasks import run_task
 
 # Text diffs longer than this many lines are truncated in the popup.
 TEXT_DIFF_MAX_LINES = 5000
-
-_SEARCH_TASK_KEY = '-SEARCH-'
-_EXPORT_TASK_KEY = '-EXPORT-'
 
 
 # ---------------------------------------------------------------------------
@@ -258,19 +252,41 @@ def format_text_diff(diff_lines, max_lines=TEXT_DIFF_MAX_LINES):
 # ---------------------------------------------------------------------------
 
 def search(window, state):
-    """Open the non-modal finder window and drive it (see module docstring)."""
+    """Open the non-modal finder as an aux window (see module docstring)."""
     if not is_pdf_loaded(state):
         info_popup(window, _(
             'Search requires a loaded PDF document. Imported images have '
             'no text layer, so searching them is not possible.'))
         return
 
+    # Only one finder at a time: focus the existing one instead.
+    for aux_window, handler in state.aux_windows.items():
+        if getattr(handler, 'aux_kind', None) == 'search-finder':
+            try:
+                aux_window.bring_to_front()
+            except Exception:
+                pass
+            return
+
     finder = review_dialogs.open_search_window(window)
-    hits = []
-    locations = []   # per hit: (current_page_index or None, remapped rects)
-    temp_ids = []
-    selected = -1
-    searching = False
+    state.aux_windows[finder] = _make_finder_handler(window, state, finder)
+
+
+def _make_finder_handler(window, state, finder):
+    """Build the aux-window handler driving the search finder.
+
+    ``window`` is the MAIN window (hit navigation flips its pages and draws
+    on its graph); ``finder`` is the non-modal finder window. The returned
+    handler follows the aux-window contract:
+    ``handler(finder, state, event, values) -> bool keep_open``.
+    """
+    ctx = {
+        'hits': [],
+        'locations': [],   # per hit: (current_page_index or None, rects)
+        'temp_ids': [],
+        'selected': -1,
+        'searching': False,
+    }
 
     def show_hit(index):
         """Select hit ``index``: flip page, outline rects at current zoom.
@@ -279,13 +295,14 @@ def search(window, state):
         original file): hits on deleted pages are only marked, cropped-away
         match areas show the page without outlines plus a status note.
         """
-        nonlocal selected, temp_ids
+        hits = ctx['hits']
         if not hits:
             return
         index = max(0, min(int(index), len(hits) - 1))
-        selected = index
+        ctx['selected'] = index
         hit = hits[index]
-        current, rects = (locations[index] if index < len(locations)
+        current, rects = (ctx['locations'][index]
+                          if index < len(ctx['locations'])
                           else (hit.page_index, hit.rects_px))
         try:
             finder['-RESULTS-'].update(set_to_index=[index],
@@ -295,7 +312,7 @@ def search(window, state):
         counter = f'{index + 1} / {len(hits)}'
         # flip_to_page redraws the graph (erasing old temp figures too), the
         # explicit clear keeps the bookkeeping exact when the page is unchanged.
-        temp_ids = clear_temp_figures(window, temp_ids)
+        ctx['temp_ids'] = clear_temp_figures(window, ctx['temp_ids'])
         if current is None:
             # The page was deleted by a page op: skip navigation.
             finder['-COUNT-'].update(counter + ' ' + _('(page removed)'))
@@ -305,94 +322,98 @@ def search(window, state):
         finder['-COUNT-'].update(counter)
         state.current_page = flip_to_page(window, state.images,
                                           current, state)
-        temp_ids = draw_hit_outlines(window, rects,
-                                     ImageContainer.zoom_factor)
+        ctx['temp_ids'] = draw_hit_outlines(window, rects,
+                                            ImageContainer.zoom_factor)
 
-    while True:
-        event, values = finder.read(timeout=100)
+    def on_search_done(_win, st, hits):
+        ctx['searching'] = False
+        if finder.was_closed():
+            return
+        try:
+            finder['-FIND-'].update(disabled=False)
+        except Exception:
+            pass
+        hits = hits or []
+        ctx['hits'] = hits
+        locations = []
+        if hits:
+            if st.journal is None or st.journal.is_empty():
+                locations = [(hit.page_index,
+                              [list(r) for r in hit.rects_px])
+                             for hit in hits]
+            else:
+                try:
+                    total = page_count(
+                        st.file_path,
+                        getattr(st, 'source_password', None))
+                except Exception:
+                    total = max(hit.page_index for hit in hits) + 1
+                locations = [remap_hit_location(hit, st.journal, total)
+                             for hit in hits]
+        ctx['locations'] = locations
+        ctx['temp_ids'] = clear_temp_figures(window, ctx['temp_ids'])
+        lines = []
+        for hit, (current, _rects) in zip(hits, locations):
+            line = format_hit(hit)
+            if current is None:
+                line += ' ' + _('(page removed)')
+            lines.append(line)
+        finder['-RESULTS-'].update(values=lines)
+        if hits:
+            show_hit(0)
+        else:
+            ctx['selected'] = -1
+            finder['-COUNT-'].update('0 / 0')
+            info_popup(finder, _('No matches found.'))
 
+    def on_search_error(_win, _st, _payload):
+        # Cleanup hook: main.py shows the standard error popup afterwards.
+        ctx['searching'] = False
+        if finder.was_closed():
+            return
+        try:
+            finder['-FIND-'].update(disabled=False)
+            finder['-COUNT-'].update('0 / 0')
+        except Exception:
+            pass
+
+    def handle(finder_window, st, event, values):
         if event in (sg.WINDOW_CLOSED, '-CLOSE-'):
-            break
-        if event == sg.TIMEOUT_EVENT:
-            continue
-
-        # Background search events: ('-SEARCH-', 'PROGRESS'/'DONE'/'ERROR')
-        if (isinstance(event, tuple) and len(event) == 2
-                and event[0] == _SEARCH_TASK_KEY):
-            payload = (values or {}).get(event)
-            if event[1] == 'PROGRESS':
-                continue
-            searching = False
-            try:
-                finder['-FIND-'].update(disabled=False)
-            except Exception:
-                pass
-            if event[1] == 'ERROR':
-                finder['-COUNT-'].update('0 / 0')
-                error_popup(finder, _('error_occurred'), payload)
-            elif event[1] == 'DONE':
-                hits = payload or []
-                locations = []
-                if hits:
-                    if state.journal is None or state.journal.is_empty():
-                        locations = [(hit.page_index,
-                                      [list(r) for r in hit.rects_px])
-                                     for hit in hits]
-                    else:
-                        try:
-                            total = page_count(
-                                state.file_path,
-                                getattr(state, 'source_password', None))
-                        except Exception:
-                            total = max(hit.page_index for hit in hits) + 1
-                        locations = [
-                            remap_hit_location(hit, state.journal, total)
-                            for hit in hits]
-                temp_ids = clear_temp_figures(window, temp_ids)
-                lines = []
-                for hit, (current, _rects) in zip(hits, locations):
-                    line = format_hit(hit)
-                    if current is None:
-                        line += ' ' + _('(page removed)')
-                    lines.append(line)
-                finder['-RESULTS-'].update(values=lines)
-                if hits:
-                    show_hit(0)
-                else:
-                    selected = -1
-                    finder['-COUNT-'].update('0 / 0')
-                    info_popup(finder, _('No matches found.'))
-            continue
+            ctx['temp_ids'] = clear_temp_figures(window, ctx['temp_ids'])
+            return False
 
         if event == '-FIND-':
-            if searching:
-                continue
-            term = (values.get('-TERM-') or '').strip()
+            if ctx['searching']:
+                return True
+            term = ((values or {}).get('-TERM-') or '').strip()
             if not term:
-                error_popup(finder, _('Please enter a search term.'))
-                continue
-            searching = True
-            finder['-FIND-'].update(disabled=True)
-            finder['-COUNT-'].update(_('Searching…'))
-            run_task(finder, perform_search, state, term,
-                     bool(values.get('-CASE-')), key=_SEARCH_TASK_KEY)
+                error_popup(finder_window, _('Please enter a search term.'))
+                return True
+            ctx['searching'] = True
+            finder_window['-FIND-'].update(disabled=True)
+            finder_window['-COUNT-'].update(_('Searching…'))
+            run_task(window, perform_search, st, term,
+                     bool((values or {}).get('-CASE-')),
+                     on_done=on_search_done, on_error=on_search_error)
 
         elif event == '-RESULTS-':
             try:
-                indexes = finder['-RESULTS-'].get_indexes()
+                indexes = finder_window['-RESULTS-'].get_indexes()
             except Exception:
                 indexes = ()
             if indexes:
                 show_hit(indexes[0])
 
         elif event == '-PREV-':
-            show_hit(selected - 1)
+            show_hit(ctx['selected'] - 1)
 
         elif event == '-NEXT-':
-            show_hit(selected + 1)
+            show_hit(ctx['selected'] + 1)
 
-    clear_temp_figures(window, temp_ids)
-    finder.close()
+        return True
+
+    handle.aux_kind = 'search-finder'
+    return handle
 
 
 # ---------------------------------------------------------------------------
@@ -400,40 +421,59 @@ def search(window, state):
 # ---------------------------------------------------------------------------
 
 def _show_compare_results(window, state, request, result):
-    """Results window loop: per-page list, report export, text diff."""
+    """Create + register the non-modal compare results aux window."""
     lines = build_result_lines(result)
     results_window = review_dialogs.open_compare_results_window(
         window, lines, verdict_text(result))
-    exporting = False
+    state.aux_windows[results_window] = _make_results_handler(
+        window, state, request, result, results_window)
+    return results_window
 
-    while True:
-        event, values = results_window.read()
 
-        if event in (sg.WINDOW_CLOSED, '-CLOSE-'):
-            break
+def _make_results_handler(window, state, request, result, results_window):
+    """Build the aux-window handler for the compare results window.
 
-        # Report export task events: ('-EXPORT-', 'DONE'/'ERROR'/'PROGRESS')
-        if (isinstance(event, tuple) and len(event) == 2
-                and event[0] == _EXPORT_TASK_KEY):
-            if event[1] == 'PROGRESS':
-                continue
-            exporting = False
+    ``window`` is the MAIN window (task events report there). Export and
+    text diff run as background tasks with their buttons disabled while
+    running; results are shown from the DONE callbacks.
+    """
+    running = {'export': False, 'textdiff': False}
+
+    def _reset_button(kind, key):
+        running[kind] = False
+        if not results_window.was_closed():
             try:
-                results_window['-EXPORT-'].update(disabled=False)
+                results_window[key].update(disabled=False)
             except Exception:
                 pass
-            payload = (values or {}).get(event)
-            if event[1] == 'ERROR':
-                error_popup(results_window, _('error_occurred'), payload)
-            elif event[1] == 'DONE':
-                info_popup(results_window,
-                           _('Report saved: {filename}',
+
+    def on_export_done(win, _st, payload):
+        _reset_button('export', '-EXPORT-')
+        parent = win if results_window.was_closed() else results_window
+        info_popup(parent, _('Report saved: {filename}',
                              filename=os.path.basename(str(payload))))
-            continue
+
+    def on_export_error(_win, _st, _payload):
+        # Cleanup hook: main.py shows the standard error popup afterwards.
+        _reset_button('export', '-EXPORT-')
+
+    def on_textdiff_done(_win, _st, diff_lines):
+        _reset_button('textdiff', '-TEXTDIFF-')
+        if results_window.was_closed():
+            return
+        review_dialogs.show_text_diff_popup(
+            results_window, format_text_diff(diff_lines))
+
+    def on_textdiff_error(_win, _st, _payload):
+        _reset_button('textdiff', '-TEXTDIFF-')
+
+    def handle(results_win, st, event, values):
+        if event in (sg.WINDOW_CLOSED, '-CLOSE-'):
+            return False
 
         if event == '-EXPORT-':
-            if exporting:
-                continue
+            if running['export']:
+                return True
             default_name = 'compare_report.pdf'
             save_path = sg.popup_get_file(
                 _('Save report PDF'), save_as=True, no_window=True,
@@ -441,22 +481,26 @@ def _show_compare_results(window, state, request, result):
                 file_types=(('PDF', '*.pdf *.PDF'),),
                 default_extension='.pdf', default_path=default_name)
             if not save_path:
-                continue
-            exporting = True
-            results_window['-EXPORT-'].update(disabled=True)
-            run_task(results_window, export_report, result, request,
-                     save_path, key=_EXPORT_TASK_KEY)
+                return True
+            running['export'] = True
+            results_win['-EXPORT-'].update(disabled=True)
+            run_task(window, export_report, result, request, save_path,
+                     on_done=on_export_done, on_error=on_export_error)
 
         elif event == '-TEXTDIFF-':
-            try:
-                diff_lines = run_text_diff(request)
-            except Exception as exc:
-                error_popup(results_window, _('error_occurred'), exc)
-                continue
-            review_dialogs.show_text_diff_popup(
-                results_window, format_text_diff(diff_lines))
+            # Text extraction of both PDFs is slow on large documents:
+            # run it as a background task, button disabled meanwhile.
+            if running['textdiff']:
+                return True
+            running['textdiff'] = True
+            results_win['-TEXTDIFF-'].update(disabled=True)
+            run_task(window, run_text_diff, request,
+                     on_done=on_textdiff_done, on_error=on_textdiff_error)
 
-    results_window.close()
+        return True
+
+    handle.aux_kind = 'compare-results'
+    return handle
 
 
 def compare(window, state):
@@ -469,9 +513,7 @@ def compare(window, state):
     def on_done(done_window, done_state, result):
         _show_compare_results(done_window, done_state, request, result)
 
-    state.task_callbacks['-TASK-'] = on_done
-    state.busy = True
-    run_task(window, run_compare, request, key='-TASK-')
+    run_task(window, run_compare, request, on_done=on_done)
 
 
 HANDLERS = {

@@ -15,7 +15,8 @@ Acrobat-suite additions (c) 2026 CoverUP contributors
 
 from dataclasses import dataclass, field
 
-import pypdfium2 as pdfium
+from workonward_read import pdfium_io
+from workonward_read.pdfium_io import PDFIUM_LOCK
 
 # Canvas/annotation coordinates are original-image pixels at 200 PPI.
 IMPORT_PPI = 200
@@ -46,21 +47,6 @@ class Hit:
     page_size_px: list = field(default_factory=list)
 
 
-def _open_pdf(pdf_path, password=None):
-    """Open a PDF with pypdfium2, translating password failures to ValueError."""
-    try:
-        if password:
-            return pdfium.PdfDocument(pdf_path, password=password)
-        return pdfium.PdfDocument(pdf_path)
-    except pdfium.PdfiumError as exc:
-        message = str(exc).lower()
-        if "password" in message or "encrypt" in message:
-            raise ValueError(
-                "The PDF is encrypted and requires a valid password."
-            ) from exc
-        raise
-
-
 def page_count(pdf_path, password=None):
     """Return the number of pages in the PDF at ``pdf_path``.
 
@@ -68,11 +54,8 @@ def page_count(pdf_path, password=None):
         ValueError: If the PDF is encrypted and the password is missing or
             wrong.
     """
-    pdf = _open_pdf(pdf_path, password)
-    try:
+    with pdfium_io.pdfium_session(pdf_path, password) as pdf:
         return len(pdf)
-    finally:
-        pdf.close()
 
 
 def search_document(pdf_path, term, password=None, match_case=False,
@@ -100,57 +83,66 @@ def search_document(pdf_path, term, password=None, match_case=False,
         raise ValueError("The search term must not be empty.")
 
     hits = []
-    pdf = _open_pdf(pdf_path, password)
+    pdf = pdfium_io.open_pdf(pdf_path, password)
     try:
-        total_pages = len(pdf)
+        with PDFIUM_LOCK:
+            total_pages = len(pdf)
         for page_index in range(total_pages):
-            page = pdf[page_index]
-            textpage = None
-            searcher = None
-            try:
-                page_w_pt, page_h_pt = page.get_size()
-                page_size_px = [page_w_pt * _PT_TO_PX, page_h_pt * _PT_TO_PX]
-                textpage = page.get_textpage()
-                full_text = textpage.get_text_range()
-                searcher = textpage.search(term, match_case=match_case)
-                while True:
-                    occurrence = searcher.get_next()
-                    if occurrence is None:
-                        break
-                    char_index, char_count = occurrence
+            # pdfium is not thread-safe: hold the lock for the whole
+            # per-page call sequence (acquired per page, not per document,
+            # so other pdfium users are not starved on long searches).
+            with PDFIUM_LOCK:
+                page = pdf[page_index]
+                textpage = None
+                searcher = None
+                try:
+                    page_w_pt, page_h_pt = page.get_size()
+                    page_size_px = [page_w_pt * _PT_TO_PX,
+                                    page_h_pt * _PT_TO_PX]
+                    textpage = page.get_textpage()
+                    full_text = textpage.get_text_range()
+                    searcher = textpage.search(term, match_case=match_case)
+                    while True:
+                        occurrence = searcher.get_next()
+                        if occurrence is None:
+                            break
+                        char_index, char_count = occurrence
 
-                    # A match may span several lines (line wraps): pdfium
-                    # reports one rectangle per contiguous text run.
-                    n_rects = textpage.count_rects(char_index, char_count)
-                    rects_px = []
-                    for rect_index in range(n_rects):
-                        left, bottom, right, top = textpage.get_rect(rect_index)
-                        # PDF pt (y-up) -> 200-PPI image px (y-down).
-                        rects_px.append([
-                            left * _PT_TO_PX,
-                            (page_h_pt - top) * _PT_TO_PX,
-                            right * _PT_TO_PX,
-                            (page_h_pt - bottom) * _PT_TO_PX,
-                        ])
+                        # A match may span several lines (line wraps): pdfium
+                        # reports one rectangle per contiguous text run.
+                        n_rects = textpage.count_rects(char_index, char_count)
+                        rects_px = []
+                        for rect_index in range(n_rects):
+                            left, bottom, right, top = \
+                                textpage.get_rect(rect_index)
+                            # PDF pt (y-up) -> 200-PPI image px (y-down).
+                            rects_px.append([
+                                left * _PT_TO_PX,
+                                (page_h_pt - top) * _PT_TO_PX,
+                                right * _PT_TO_PX,
+                                (page_h_pt - bottom) * _PT_TO_PX,
+                            ])
 
-                    start = max(0, char_index - _CONTEXT_CHARS)
-                    end = min(len(full_text), char_index + char_count + _CONTEXT_CHARS)
-                    context = " ".join(full_text[start:end].split())
+                        start = max(0, char_index - _CONTEXT_CHARS)
+                        end = min(len(full_text),
+                                  char_index + char_count + _CONTEXT_CHARS)
+                        context = " ".join(full_text[start:end].split())
 
-                    hits.append(Hit(page_index=page_index, context=context,
-                                    rects_px=rects_px,
-                                    page_size_px=list(page_size_px)))
-            finally:
-                if searcher is not None:
-                    searcher.close()
-                if textpage is not None:
-                    textpage.close()
-                page.close()
+                        hits.append(Hit(page_index=page_index,
+                                        context=context,
+                                        rects_px=rects_px,
+                                        page_size_px=list(page_size_px)))
+                finally:
+                    if searcher is not None:
+                        searcher.close()
+                    if textpage is not None:
+                        textpage.close()
+                    page.close()
 
             if progress_cb:
                 progress_cb(int((page_index + 1) * 100 / total_pages),
                             f"{page_index + 1}/{total_pages}")
     finally:
-        pdf.close()
+        pdfium_io.close_pdf(pdf)
 
     return hits

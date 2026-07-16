@@ -4,11 +4,16 @@ WorkOnward Read - Main application entry point.
 
 A tool for redacting PDF files and images.
 
-The event loop is intentionally thin: menu events (normalized via
-``rsplit('::', 1)``) and toolbar icon events dispatch through the handler
-registry in :mod:`workonward_read.handlers`; canvas interaction dispatches through
+The event loop is intentionally thin: it reads ALL open windows via
+``sg.read_all_windows()``. Menu events (normalized via ``rsplit('::', 1)``)
+and toolbar icon events dispatch through the handler registry in
+:mod:`workonward_read.handlers`; canvas interaction dispatches through
 :mod:`workonward_read.canvas_tools`; background work reports back via
-``('-TASK-', ...)`` tuple events (see :mod:`workonward_read.tasks`).
+``(('-TASK-', seq), ...)`` tuple events under per-invocation unique keys
+(see :mod:`workonward_read.tasks`) and is routed centrally no matter which
+window it arrives on. Non-modal secondary windows register a handler in
+``state.aux_windows`` and get their events routed by the same loop
+(aux-window contract in docs/dev-architecture.md).
 
 Licensed under GPL-3.0
 (c) 2024 - 2026 Björn Seipel
@@ -22,7 +27,7 @@ from multiprocessing import freeze_support
 
 import FreeSimpleGUI as sg
 
-from workonward_read import __version__, canvas_tools
+from workonward_read import __version__, canvas_tools, tasks
 from workonward_read.image_container import ImageContainer
 from workonward_read.workfile import WorkfileManager, get_default_datadir, serialize_journal
 from workonward_read.state import AppState
@@ -53,9 +58,16 @@ def _graph_to_original(values, factor):
 
 
 def _handle_task_event(window, state, event, values):
-    """Handle ('-TASK-', 'PROGRESS'/'DONE'/'ERROR') tuple events."""
+    """Handle ``(('-TASK-', seq), 'PROGRESS'/'DONE'/'ERROR')`` tuple events.
+
+    ``window`` is always the MAIN window: the shared ``-PROGRESS-`` bar
+    lives there and error popups center on it. Every task reports under its
+    own unique key, so concurrent tasks deliver DONE/ERROR payloads to
+    their OWN callbacks; the progress bar is shared, so with overlapping
+    tasks the last reporter wins (accepted behavior).
+    """
     key, kind = event
-    payload = values.get(event)
+    payload = (values or {}).get(event)
 
     if kind == 'PROGRESS':
         try:
@@ -63,17 +75,39 @@ def _handle_task_event(window, state, event, values):
             window['-PROGRESS-'].update(current_count=int(pct))
         except Exception:
             pass
-    elif kind == 'ERROR':
-        state.busy = False
-        state.task_callbacks.pop(key, None)
-        window['-PROGRESS-'].update(current_count=0)
+        return
+
+    on_done, on_error = tasks.pop_callbacks(key)
+    window['-PROGRESS-'].update(current_count=0)
+    if kind == 'ERROR':
+        # Cleanup hook first (release doc locks, re-enable buttons), then
+        # the standard blocking error popup.
+        if callable(on_error):
+            on_error(window, state, payload)
         error_popup(window, _('error_occurred'), payload)
     elif kind == 'DONE':
-        state.busy = False
-        window['-PROGRESS-'].update(current_count=0)
-        callback = state.task_callbacks.pop(key, None)
-        if callable(callback):
-            callback(window, state, payload)
+        if callable(on_done):
+            on_done(window, state, payload)
+
+
+def _route_aux_window_event(state, aux_window, event, values):
+    """Dispatch one event to the owning aux-window handler.
+
+    Handlers return True to keep their window open; on a falsy return (or
+    when no handler is registered — e.g. the window was closed by the OS)
+    the window is closed and unregistered. Returns the keep-open decision.
+    """
+    handler = state.aux_windows.get(aux_window)
+    keep_open = False
+    if handler is not None:
+        keep_open = bool(handler(aux_window, state, event, values))
+    if not keep_open:
+        state.aux_windows.pop(aux_window, None)
+        try:
+            aux_window.close()
+        except Exception:
+            pass
+    return keep_open
 
 
 def main():
@@ -163,17 +197,26 @@ def main():
 
     graph_dragging = False
 
-    # Main event loop
+    # Main event loop: reads the main window AND every registered aux
+    # window. read_all_windows() with no timeout blocks exactly like
+    # window.read(); write_event_value events are per-window queued and
+    # arrive attributed to the window they were written to.
     while True:
-        event, values = window.read()
+        event_window, event, values = sg.read_all_windows()
 
-        if event in (sg.WINDOW_CLOSED, 'EXIT'):
-            break
-
-        # Background task events: ('-TASK-', 'PROGRESS'/'DONE'/'ERROR')
-        if isinstance(event, tuple) and len(event) == 2:
+        # Background task events (('-TASK-', seq), 'PROGRESS'/'DONE'/'ERROR')
+        # are routed centrally no matter which window they arrived on.
+        if tasks.is_task_event(event):
             _handle_task_event(window, state, event, values)
             continue
+
+        # Events belonging to a registered non-modal secondary window.
+        if event_window is not None and event_window is not window:
+            _route_aux_window_event(state, event_window, event, values)
+            continue
+
+        if event_window is None or event in (sg.WINDOW_CLOSED, 'EXIT'):
+            break
 
         # Normalize menu events '<label>::<KEY>' -> '<KEY>'
         if isinstance(event, str) and '::' in event:
@@ -229,6 +272,14 @@ def main():
 
         elif event in HANDLERS:
             HANDLERS[event](window, state)
+
+    # Close any remaining aux windows before shutting down.
+    for aux_window in list(state.aux_windows):
+        state.aux_windows.pop(aux_window, None)
+        try:
+            aux_window.close()
+        except Exception:
+            pass
 
     # Save workfile only if we have loaded images
     if state.images:

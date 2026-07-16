@@ -19,13 +19,11 @@ Licensed under GPL-3.0
 Acrobat-suite additions (c) 2026 CoverUP contributors
 """
 
-import io
-import os
-
-import pypdfium2 as pdfium
 from PIL import Image
 
+from workonward_read import pdfium_io
 from workonward_read.image_container import ImageContainer
+from workonward_read.pdfium_io import PDFIUM_LOCK
 
 # Application-wide import resolution (see docs/dev-architecture.md).
 IMPORT_PPI = 200
@@ -75,54 +73,26 @@ def render_pdf_pages(path, indices, password=None):
     Returns:
         list[ImageContainer]: One container per requested index.
     """
-    if not path or not os.path.isfile(path):
-        raise FileNotFoundError(f"File not found: {path}")
     indices = list(indices)
-
-    try:
-        if password:
-            pdf = pdfium.PdfDocument(path, password=password)
-        else:
-            pdf = pdfium.PdfDocument(path)
-    except pdfium.PdfiumError as exc:
-        if "password" in str(exc).lower():
-            raise ValueError(
-                "The PDF is encrypted and requires a correct password."
-            ) from exc
-        raise ValueError(f"Could not open PDF: {exc}") from exc
+    pdf = pdfium_io.open_pdf(path, password)
 
     containers = []
     scale = IMPORT_PPI / 72.0
     try:
-        total = len(pdf)
+        with PDFIUM_LOCK:
+            total = len(pdf)
         for index in indices:
             if not isinstance(index, int) or isinstance(index, bool) or \
                     not 0 <= index < total:
                 raise ValueError(
                     f"Page index {index!r} out of range for '{path}' ({total} pages)."
                 )
-            page = pdf[index]
-            pil_image = None
-            try:
-                pil_image = page.render(scale=scale).to_pil()
-                page_size = page.get_size()
-                # JPEG round-trip like document_loader: keeps the in-memory
-                # representation compact and detaches it from pdfium buffers.
-                with io.BytesIO() as buffer:
-                    pil_image.save(buffer, format="JPEG")
-                    buffer.seek(0)
-                    loaded = Image.open(buffer)
-                    loaded.load()
-            finally:
-                if pil_image is not None:
-                    try:
-                        pil_image.close()
-                    except Exception:
-                        pass
-                try:
-                    page.close()
-                except Exception:
-                    pass
+            # JPEG round-trip like document_loader: keeps the in-memory
+            # representation compact and detaches it from pdfium buffers.
+            # All pdfium work happens under PDFIUM_LOCK (per page).
+            loaded = pdfium_io.render_page_to_pil(pdf, index, scale,
+                                                  jpeg_roundtrip=True)
+            page_size = pdfium_io.get_page_size(pdf, index)
             containers.append(ImageContainer(loaded, page_size))
     except Exception:
         for container in containers:
@@ -132,10 +102,7 @@ def render_pdf_pages(path, indices, password=None):
                 pass
         raise
     finally:
-        try:
-            pdf.close()
-        except Exception:
-            pass
+        pdfium_io.close_pdf(pdf)
     return containers
 
 

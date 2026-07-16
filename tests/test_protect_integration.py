@@ -130,7 +130,7 @@ def test_set_passwords_task_ignores_state_password_for_other_files(tmp_path):
     state.file_path = str(tmp_path / 'someother.pdf')
     state.source_password = 'irrelevant'
 
-    assert protect_handlers.source_password({'input': str(src)}, state) is None
+    assert state.password_for(str(src)) is None
     protect_handlers.set_passwords_task(
         _set_passwords_request(src, out), state)
     assert PdfReader(out).is_encrypted
@@ -148,9 +148,11 @@ def test_set_passwords_task_via_run_task_reports_done(tmp_path):
     thread.join(timeout=10)
     assert not thread.is_alive()
 
-    done = [value for key, value in window.events if key == ('-TASK-', 'DONE')]
+    done = [value for key, value in window.events
+            if key == (thread.task_key, 'DONE')]
     assert done == [request]
-    progress = [key for key, _v in window.events if key == ('-TASK-', 'PROGRESS')]
+    progress = [key for key, _v in window.events
+                if key == (thread.task_key, 'PROGRESS')]
     assert progress  # progress_cb was injected and used
     assert PdfReader(out).is_encrypted
 
