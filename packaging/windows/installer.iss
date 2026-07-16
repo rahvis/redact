@@ -1,7 +1,7 @@
 ; Inno Setup script for WorkOnward Read (Windows x64)
 ;
 ; Build (from the repo root, after PyInstaller has produced dist\WorkOnwardRead\):
-;   ISCC.exe packaging\windows\installer.iss /DWORKONWARD_VERSION=0.4.2
+;   ISCC.exe packaging\windows\installer.iss /DWORKONWARD_VERSION=0.5.0
 ;
 ; If /DWORKONWARD_VERSION is not passed, the WORKONWARD_VERSION environment
 ; variable is used, falling back to 0.0.0 (which should never ship).

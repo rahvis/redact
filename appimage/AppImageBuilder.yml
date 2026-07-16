@@ -57,7 +57,7 @@ AppDir:
     id: org.workonward.read
     name: WorkOnward Read
     icon: workonward-read
-    version: 0.4.2
+    version: 0.5.0
     exec: usr/bin/workonward-read
     exec_args: $@
 
