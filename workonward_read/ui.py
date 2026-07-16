@@ -10,6 +10,7 @@ import os
 import FreeSimpleGUI as sg
 
 from workonward_read.menu import build_menu
+from workonward_read.thumbnails import build_sidebar_column
 from workonward_read.utils import (get_script_root, find_fonts_folder, find_assets_folder,
                                    make_icons, draw_character)
 from workonward_read.i18n import _
@@ -150,6 +151,8 @@ def create_layout(icons, image_bg_color='gray'):
             sg.Push(background_color='gray'),
         ],
         [
+            # Hidden-by-default thumbnails sidebar (View > Thumbnails).
+            build_sidebar_column(),
             sg.Column(
                 layout=graph_layout,
                 background_color='silver',

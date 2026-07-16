@@ -7,7 +7,7 @@ Licensed under GPL-3.0
 Acrobat-suite additions (c) 2026 CoverUP contributors
 """
 
-from workonward_read import ui
+from workonward_read import thumbnails, ui
 
 
 # --- shared graph helpers (moved from main.py) ----------------------------
@@ -99,8 +99,19 @@ def next_page(window, state):
 
 
 def toggle_thumbnails(window, state):
-    """Toggle the thumbnails sidebar flag (panel arrives in a later wave)."""
+    """Toggle the thumbnails sidebar and (re)build its content."""
     state.thumbnails_visible = not state.thumbnails_visible
+    if state.thumbnails_visible and state.images:
+        # Populate before showing so the sidebar never flashes empty. When
+        # generation is skipped (very large documents) keep the panel hidden.
+        if not thumbnails.refresh_thumbnails(window, state.images,
+                                             state.current_page):
+            state.thumbnails_visible = False
+            return
+    try:
+        window['-THUMBS-'].update(visible=state.thumbnails_visible)
+    except Exception:
+        pass
 
 
 # --- toolbar-only handlers ---------------------------------------------------
