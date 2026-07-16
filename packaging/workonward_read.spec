@@ -90,7 +90,7 @@ a = Analysis(
         'pydoc_data',
         'lib2to3',
         'test',
-        'unittest',
+        # 'unittest' must NOT be excluded: fpdf2's sign module imports it at module load
     ],
     noarchive=False,
 )
