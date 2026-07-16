@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "workonward-read"
-version = "0.4.2"
+version = "0.5.0"
 description = "WorkOnward Read - a tool for redacting PDF files and images (based on CoverUP)"
 readme = "README.md"
 license = {text = "GPL-3.0"}

@@ -29,7 +29,7 @@ Example usage:
     $ python -m workonward_read
 """
 
-__version__ = "0.4.2"
+__version__ = "0.5.0"
 __author__ = "Björn Seipel"
 __email__ = "support@digidigital.de"
 __license__ = "GPL-3.0"
