@@ -122,9 +122,7 @@ def test_main_layout_contains_the_sidebar():
 # refresh_thumbnails
 # ---------------------------------------------------------------------------
 
-def test_refresh_creates_rows_captions_and_handlers():
-    from workonward_read import handlers as registry
-
+def test_refresh_creates_rows_captions_and_bindings():
     window = FakeWindow()
     images = [FakePage(), FakePage(), FakePage()]
     assert thumbnails.refresh_thumbnails(window, images, current_page=1) is True
@@ -133,8 +131,6 @@ def test_refresh_creates_rows_captions_and_handlers():
     for idx in range(3):
         assert ('-THUMB-', idx) in keys
         assert ('-THUMB_LABEL-', idx) in keys
-        # click routing entries land in the merged registry main dispatches
-        assert callable(registry.HANDLERS[('-THUMB-', idx, 'CLICK')])
         # a Tk click binding was installed on the image element
         assert '<Button-1>' in window[('-THUMB-', idx)].Widget.bindings
 
@@ -142,6 +138,18 @@ def test_refresh_creates_rows_captions_and_handlers():
     labels = [element for _p, rows in window.extended for row in rows
               for element in row if element.Key == ('-THUMB_LABEL-', 1)]
     assert labels and labels[0].DisplayText == 'Page 2'
+
+
+def test_refresh_registers_no_tuple_keys_in_handlers():
+    """Thumbnail clicks route via main.py's '-THUMB-' tuple-event branch,
+    never via per-key entries mutated into the merged handler registry
+    (which would accumulate stale closures forever)."""
+    from workonward_read import handlers as registry
+
+    window = FakeWindow()
+    thumbnails.refresh_thumbnails(window, [FakePage(), FakePage()])
+    tuple_keys = [key for key in registry.HANDLERS if isinstance(key, tuple)]
+    assert tuple_keys == []
 
 
 def test_refresh_updates_existing_and_hides_surplus():
@@ -165,19 +173,34 @@ def test_refresh_updates_existing_and_hides_surplus():
 
 
 def test_thumbnail_png_cache_invalidates_on_image_swap():
+    from workonward_read.pdf_ops import _replace_container_image
+
     page = FakePage(width=240, height=360)
     first = thumbnails.thumbnail_png(page)
     assert first is thumbnails.thumbnail_png(page)  # cached bytes reused
 
-    # Page ops (rotate/crop) replace container.image with a new object.
-    old = page.image
-    page.image = old.transpose(Image.Transpose.ROTATE_270)
-    old.close()
+    # Page ops (rotate/crop) swap container.image via
+    # pdf_ops._replace_container_image, which bumps image_version.
+    _replace_container_image(page, page.image.transpose(
+        Image.Transpose.ROTATE_270))
+    assert page.image_version == 1
     second = thumbnails.thumbnail_png(page)
     assert second is not first
 
     thumb = Image.open(__import__('io').BytesIO(second))
     assert thumb.width == thumbnails.THUMB_WIDTH
+
+
+def test_thumbnail_png_cache_keyed_on_version_not_object_identity():
+    """A same-size in-place bitmap change is picked up once the version is
+    bumped (id(image) reuse can no longer poison the cache)."""
+    page = FakePage(width=100, height=100, color='white')
+    first = thumbnails.thumbnail_png(page)
+    # Same object, same size: cached bytes stay.
+    assert thumbnails.thumbnail_png(page) is first
+    # Bumping the version (what every image swap does) invalidates.
+    page.image_version = getattr(page, 'image_version', 0) + 1
+    assert thumbnails.thumbnail_png(page) is not first
 
 
 def test_refresh_skips_documents_over_500_pages():
@@ -229,15 +252,37 @@ def test_click_binding_posts_a_three_tuple_event():
     assert len(event) == 3  # must NOT look like a ('-TASK-', ...) event
 
 
-def test_registered_handler_dispatches_like_main_would():
-    from workonward_read import handlers as registry
-
+def test_thumb_event_routes_like_main_would():
+    """Replicates main.py's tuple-event prefix branch: tuple events whose
+    first element is '-THUMB-' go to thumbnails.handle_thumb_event."""
     window = FakeWindow()
     state = AppState()
     state.images = [FakePage(), FakePage(), FakePage()]
     thumbnails.refresh_thumbnails(window, state.images)
 
     event = ('-THUMB-', 1, 'CLICK')
-    assert event in registry.HANDLERS  # what main.py's `event in HANDLERS` sees
-    registry.HANDLERS[event](window, state)
+    # the exact routing condition main.py uses
+    assert isinstance(event, tuple) and event and event[0] == '-THUMB-'
+    thumbnails.handle_thumb_event(window, state, event)
     assert state.current_page == 1
+
+
+def test_refresh_updates_only_invalidated_thumbnails():
+    """After a single-page rotate, refresh pushes new image data to exactly
+    that page's sg.Image (unchanged pages skip the update)."""
+    from workonward_read.pdf_ops import _replace_container_image
+
+    window = FakeWindow()
+    images = [FakePage(40, 60), FakePage(40, 60), FakePage(40, 60)]
+    thumbnails.refresh_thumbnails(window, images, current_page=0)
+
+    baseline = {idx: len(window[('-THUMB-', idx)].updates) for idx in range(3)}
+
+    # Rotate page 1 only (image swap bumps its version).
+    _replace_container_image(images[1], images[1].image.transpose(
+        Image.Transpose.ROTATE_270))
+    thumbnails.refresh_thumbnails(window, images, current_page=0)
+
+    counts = {idx: len(window[('-THUMB-', idx)].updates) - baseline[idx]
+              for idx in range(3)}
+    assert counts == {0: 0, 1: 1, 2: 0}

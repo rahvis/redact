@@ -159,7 +159,7 @@ class UndoStack:
 # ---------------------------------------------------------------------------
 
 def render_on_image(pil_image, ann_dicts, decorations, page_idx, total_pages,
-                    page_w_pt, page_h_pt, font_dir):
+                    page_w_pt, page_h_pt, font_dir, decor_scale=1.0):
     """Burn annotations and document decorations into a page image.
 
     Pure function safe for ProcessPoolExecutor workers: every argument is
@@ -179,6 +179,12 @@ def render_on_image(pil_image, ann_dicts, decorations, page_idx, total_pages,
         page_w_pt: Page width in PDF points (accepted per contract).
         page_h_pt: Page height in PDF points (accepted per contract).
         font_dir: Folder containing DejaVuSans.ttf / DejaVuSans-Bold.ttf.
+        decor_scale: Scale factor applied to the DECORATION metrics (font
+            sizes, margins). Pass the display zoom (``zoom / 100``) when
+            burning a preview into an already zoom-scaled bitmap so the
+            decorations match the export rendering; the export path uses
+            the default 1.0. Annotation coordinates are NOT scaled — the
+            preview draws annotations as graph figures instead.
 
     Returns:
         A new PIL.Image in RGB mode.
@@ -189,7 +195,8 @@ def render_on_image(pil_image, ann_dicts, decorations, page_idx, total_pages,
         base = _render_annotation(base, str(d.get('kind', '')),
                                   d.get('props') or {}, font_dir)
     base = _render_decorations(base, decorations or {}, page_idx,
-                               int(total_pages), font_dir)
+                               int(total_pages), font_dir,
+                               scale=float(decor_scale))
     rgb = base.convert('RGB')
     base.close()
     return rgb
@@ -208,13 +215,21 @@ def _render_annotation(base, kind, props, font_dir):
         alpha = float(props.get('alpha', _DEFAULT_HIGHLIGHT_ALPHA))
         color = _rgba(props.get('color', _DEFAULT_HIGHLIGHT_COLOR),
                       int(round(alpha * 255)))
-        overlay = Image.new('RGBA', base.size, (0, 0, 0, 0))
-        odraw = ImageDraw.Draw(overlay)
-        odraw.rectangle(_norm_box(props['p1'], props['p2']), fill=color)
-        composed = Image.alpha_composite(base, overlay)
-        overlay.close()
-        base.close()
-        base = composed
+        # Composite on a bbox-sized overlay only (not a full-page one):
+        # identical blend result, but allocation stays proportional to the
+        # highlight, not the page.
+        x0, y0, x1, y1 = _norm_box(props['p1'], props['p2'])
+        left = max(0, int(math.floor(x0)))
+        top = max(0, int(math.floor(y0)))
+        right = min(base.width - 1, int(math.ceil(x1)))
+        bottom = min(base.height - 1, int(math.ceil(y1)))
+        if right >= left and bottom >= top:
+            overlay = Image.new('RGBA', (right - left + 1, bottom - top + 1),
+                                (0, 0, 0, 0))
+            ImageDraw.Draw(overlay).rectangle(
+                (x0 - left, y0 - top, x1 - left, y1 - top), fill=color)
+            base.alpha_composite(overlay, (left, top))
+            overlay.close()
 
     elif kind in ('underline', 'strike'):
         x0, y0, x1, y1 = _norm_box(props['p1'], props['p2'])
@@ -287,9 +302,21 @@ def _render_annotation(base, kind, props, font_dir):
     return base
 
 
-def _render_decorations(base, decorations, page_idx, total_pages, font_dir):
-    """Render document-level decorations onto the RGBA base; returns base."""
+def _render_decorations(base, decorations, page_idx, total_pages, font_dir,
+                        scale=1.0):
+    """Render document-level decorations onto the RGBA base; returns base.
+
+    ``scale`` multiplies the decoration metrics (font sizes and margins) so
+    previews burned into a zoom-scaled bitmap match the scale=1.0 export
+    rendering. The watermark is sized relative to the page and needs no
+    explicit scaling.
+    """
     bates_str = format_bates(decorations.get('bates'), page_idx)
+    margin = _DECOR_MARGIN * scale
+
+    def scaled_size(cfg):
+        return max(1, int(round(
+            int(cfg.get('size_px', _DEFAULT_DECOR_SIZE)) * scale)))
 
     watermark = decorations.get('watermark')
     if watermark:
@@ -297,8 +324,7 @@ def _render_decorations(base, decorations, page_idx, total_pages, font_dir):
 
     header_footer = decorations.get('header_footer')
     if header_footer:
-        size = int(header_footer.get('size_px', _DEFAULT_DECOR_SIZE))
-        font = _load_font(font_dir, size)
+        font = _load_font(font_dir, scaled_size(header_footer))
         color = header_footer.get('color', 'black')
         band, _slot = _parse_position(header_footer.get('position'),
                                       default_band='header')
@@ -306,7 +332,8 @@ def _render_decorations(base, decorations, page_idx, total_pages, font_dir):
             text = substitute_template(str(header_footer.get(slot) or ''),
                                        page_idx + 1, total_pages, bates_str)
             if text:
-                _draw_positioned_text(base, text, band, slot, font, color)
+                _draw_positioned_text(base, text, band, slot, font, color,
+                                      margin)
 
     page_numbers = decorations.get('page_numbers')
     if page_numbers:
@@ -317,20 +344,18 @@ def _render_decorations(base, decorations, page_idx, total_pages, font_dir):
         band, slot = _parse_position(page_numbers.get('position'),
                                      default_band='footer',
                                      default_slot='center')
-        font = _load_font(font_dir,
-                          int(page_numbers.get('size_px', _DEFAULT_DECOR_SIZE)))
+        font = _load_font(font_dir, scaled_size(page_numbers))
         _draw_positioned_text(base, text, band, slot, font,
-                              page_numbers.get('color', 'black'))
+                              page_numbers.get('color', 'black'), margin)
 
     bates = decorations.get('bates')
     if bates and bates_str:
         band, slot = _parse_position(bates.get('position'),
                                      default_band='footer',
                                      default_slot='right')
-        font = _load_font(font_dir,
-                          int(bates.get('size_px', _DEFAULT_DECOR_SIZE)))
+        font = _load_font(font_dir, scaled_size(bates))
         _draw_positioned_text(base, bates_str, band, slot, font,
-                              bates.get('color', 'black'))
+                              bates.get('color', 'black'), margin)
 
     return base
 
@@ -594,20 +619,8 @@ def render_on_graph(graph_element, ann, zoom):
             angle=float(props.get('angle', 0.0)), text_location='nw'))
 
     elif kind in ('image', 'signature'):
-        img = _decode_png(props.get('png_b64', ''))
-        if img is not None:
-            scale = float(props.get('scale', 1.0)) * factor
-            if scale != 1.0:
-                scaled = img.resize(
-                    (max(1, int(img.width * scale)),
-                     max(1, int(img.height * scale))),
-                    resample=Image.Resampling.BILINEAR)
-                img.close()
-                img = scaled
-            with io.BytesIO() as buf:
-                img.save(buf, format='PNG')
-                data = buf.getvalue()
-            img.close()
+        data = _graph_png_data(ann, props, zoom)
+        if data is not None:
             ids.append(graph_element.draw_image(
                 data=data, location=g(props['pos'])))
 
@@ -617,6 +630,46 @@ def render_on_graph(graph_element, ann, zoom):
     if not isinstance(ann, dict):
         ann.graph_ids = ids
     return ids
+
+
+def _graph_png_data(ann, props, zoom):
+    """Decoded, zoom-scaled, re-encoded PNG bytes for the graph preview.
+
+    The result is cached on the Annotation as a transient attribute
+    (``_graph_png_cache`` — like ``graph_ids``, never serialized), keyed by
+    (zoom, scale, payload), so page flips and redraws at an unchanged zoom
+    skip the expensive decode/resize/re-encode. Any props change (payload
+    or scale) or zoom change invalidates the entry. Plain-dict annotations
+    are rendered uncached.
+    """
+    png_b64 = props.get('png_b64', '')
+    if not png_b64:
+        return None
+    scale_prop = float(props.get('scale', 1.0))
+    key = (float(zoom), scale_prop, hash(png_b64))
+    cacheable = not isinstance(ann, dict)
+    if cacheable:
+        cached = getattr(ann, '_graph_png_cache', None)
+        if cached is not None and cached[0] == key:
+            return cached[1]
+    img = _decode_png(png_b64)
+    if img is None:
+        return None
+    scale = scale_prop * float(zoom) / 100.0
+    if scale != 1.0:
+        scaled = img.resize(
+            (max(1, int(img.width * scale)),
+             max(1, int(img.height * scale))),
+            resample=Image.Resampling.BILINEAR)
+        img.close()
+        img = scaled
+    with io.BytesIO() as buf:
+        img.save(buf, format='PNG')
+        data = buf.getvalue()
+    img.close()
+    if cacheable:
+        ann._graph_png_cache = (key, data)
+    return data
 
 
 # ---------------------------------------------------------------------------
@@ -791,17 +844,19 @@ def _parse_position(pos, default_band='footer', default_slot='center'):
     return band, slot
 
 
-def _draw_positioned_text(base, text, band, slot, font, color):
-    """Draw text into a header/footer slot with 24 px margins."""
+def _draw_positioned_text(base, text, band, slot, font, color,
+                          margin=_DECOR_MARGIN):
+    """Draw text into a header/footer slot with ``margin`` px margins
+    (24 px at scale 1.0)."""
     draw = ImageDraw.Draw(base)
     bbox = draw.textbbox((0, 0), text, font=font)
     w = bbox[2] - bbox[0]
     h = bbox[3] - bbox[1]
     if slot == 'left':
-        x = _DECOR_MARGIN
+        x = margin
     elif slot == 'right':
-        x = base.width - _DECOR_MARGIN - w
+        x = base.width - margin - w
     else:
         x = (base.width - w) / 2.0
-    y = _DECOR_MARGIN if band == 'header' else base.height - _DECOR_MARGIN - h
+    y = margin if band == 'header' else base.height - margin - h
     draw.text((x - bbox[0], y - bbox[1]), text, font=font, fill=color)

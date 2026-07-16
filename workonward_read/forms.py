@@ -17,33 +17,12 @@ Acrobat-suite additions (c) 2026 CoverUP contributors
 
 from typing import Optional
 
+from workonward_read.pdf_ops import open_reader
+
 # /Ff flag bits (PDF 32000-1, table 221 ff.)
 FF_READ_ONLY = 1
 FF_RADIO = 1 << 15       # bit 16
 FF_PUSHBUTTON = 1 << 16  # bit 17
-
-
-def _open_reader(input_path: str, password: Optional[str]):
-    """Open a PDF with pypdf, decrypting it when necessary.
-
-    Raises:
-        ValueError: If the file is encrypted and the password is missing/wrong.
-    """
-    from pypdf import PdfReader
-
-    reader = PdfReader(input_path)
-    if reader.is_encrypted:
-        try:
-            auth = reader.decrypt(password or "")
-        except Exception as exc:
-            raise ValueError(
-                "The PDF is encrypted and the password is missing or wrong."
-            ) from exc
-        if not auth:
-            raise ValueError(
-                "The PDF is encrypted and the password is missing or wrong."
-            )
-    return reader
 
 
 def _strip_name(value) -> Optional[str]:
@@ -152,27 +131,27 @@ def list_fields(input: str, password: Optional[str] = None) -> list:
         value, options: list|None, page_index: int|None, read_only: bool}.
         Returns an empty list for PDFs without an AcroForm.
     """
-    reader = _open_reader(input, password)
-    raw_fields = reader.get_fields() or {}
+    with open_reader(input, password) as reader:
+        raw_fields = reader.get_fields() or {}
 
-    page_map: dict = {}
-    for page_index, page in enumerate(reader.pages):
-        for name in _qualified_widget_names(page):
-            page_map.setdefault(name, page_index)
+        page_map: dict = {}
+        for page_index, page in enumerate(reader.pages):
+            for name in _qualified_widget_names(page):
+                page_map.setdefault(name, page_index)
 
-    results = []
-    for name, field in raw_fields.items():
-        field_type = _field_type(field)
-        results.append(
-            {
-                "name": str(name),
-                "type": field_type,
-                "value": _field_value(field, field_type),
-                "options": _field_options(field, field_type),
-                "page_index": page_map.get(str(name)),
-                "read_only": bool(int(field.get("/Ff") or 0) & FF_READ_ONLY),
-            }
-        )
+        results = []
+        for name, field in raw_fields.items():
+            field_type = _field_type(field)
+            results.append(
+                {
+                    "name": str(name),
+                    "type": field_type,
+                    "value": _field_value(field, field_type),
+                    "options": _field_options(field, field_type),
+                    "page_index": page_map.get(str(name)),
+                    "read_only": bool(int(field.get("/Ff") or 0) & FF_READ_ONLY),
+                }
+            )
     return results
 
 
@@ -227,43 +206,43 @@ def fill_fields(
     from pypdf import PdfWriter
     from pypdf.generic import BooleanObject, NameObject
 
-    reader = _open_reader(input, password)
-    existing = reader.get_fields() or {}
+    with open_reader(input, password) as reader:
+        existing = reader.get_fields() or {}
 
-    unknown = sorted(set(values) - set(str(k) for k in existing))
-    if unknown:
-        raise ValueError(
-            "Unknown form field name(s): " + ", ".join(unknown)
-        )
-
-    prepared = {}
-    for name, value in values.items():
-        field = existing[name]
-        field_type = _field_type(field)
-        if field_type == "checkbox" and isinstance(value, bool):
-            value = _checkbox_on_state(field) if value else "/Off"
-        elif isinstance(value, bool):
-            value = str(value)
-        prepared[name] = value
-
-    writer = PdfWriter()
-    writer.append(reader)
-
-    for page in writer.pages:
-        if page.get("/Annots"):
-            writer.update_page_form_field_values(
-                page, prepared, auto_regenerate=False
+        unknown = sorted(set(values) - set(str(k) for k in existing))
+        if unknown:
+            raise ValueError(
+                "Unknown form field name(s): " + ", ".join(unknown)
             )
 
-    acro_form = writer._root_object.get("/AcroForm")
-    if acro_form is not None:
-        acro_form = acro_form.get_object()
-        acro_form[NameObject("/NeedAppearances")] = BooleanObject(True)
-        if flatten:
-            seen: set = set()
-            for field_ref in acro_form.get("/Fields") or []:
-                _set_read_only(field_ref, seen)
+        prepared = {}
+        for name, value in values.items():
+            field = existing[name]
+            field_type = _field_type(field)
+            if field_type == "checkbox" and isinstance(value, bool):
+                value = _checkbox_on_state(field) if value else "/Off"
+            elif isinstance(value, bool):
+                value = str(value)
+            prepared[name] = value
 
-    with open(output, "wb") as fh:
-        writer.write(fh)
+        writer = PdfWriter()
+        writer.append(reader)
+
+        for page in writer.pages:
+            if page.get("/Annots"):
+                writer.update_page_form_field_values(
+                    page, prepared, auto_regenerate=False
+                )
+
+        acro_form = writer._root_object.get("/AcroForm")
+        if acro_form is not None:
+            acro_form = acro_form.get_object()
+            acro_form[NameObject("/NeedAppearances")] = BooleanObject(True)
+            if flatten:
+                seen: set = set()
+                for field_ref in acro_form.get("/Fields") or []:
+                    _set_read_only(field_ref, seen)
+
+        with open(output, "wb") as fh:
+            writer.write(fh)
     return output

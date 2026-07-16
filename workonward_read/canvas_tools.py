@@ -25,6 +25,7 @@ from typing import Protocol
 
 from workonward_read import annotations as an
 from workonward_read.annotations import UndoStack
+from workonward_read.geometry import IMPORT_PPI
 from workonward_read.image_container import ImageContainer
 from workonward_read.i18n import _
 
@@ -57,10 +58,6 @@ DEFAULT_TOOL_PROPS = {
     'image': {'scale': 1.0},
     'signature': {'scale': 1.0},
 }
-
-# Import resolution used for the measure tool (see docs/dev-architecture.md).
-_MEASURE_PPI = 200.0
-
 
 def _zoom_factor():
     """Current display zoom as a multiplier (1.0 == 100%)."""
@@ -353,23 +350,15 @@ class LineTool(_PreviewMixin):
         commit_annotation(window, state, self.kind, props)
 
 
-class InkTool:
+class InkTool(_PreviewMixin):
     """Freehand ink: accumulates points during the drag, drawing incremental
     preview segments, and commits one 'ink' annotation on release."""
 
     cursor = 'pencil'
 
     def __init__(self):
+        super().__init__()
         self._points = []
-        self._preview_ids = []
-
-    def _delete_preview(self, window):
-        for figure_id in self._preview_ids:
-            try:
-                window['-GRAPH-'].delete_figure(figure_id)
-            except Exception:
-                pass
-        self._preview_ids = []
 
     def on_press(self, window, state, x, y):
         self._points = [[int(x), int(y)]]
@@ -417,7 +406,15 @@ class InkTool:
 class ClickPlaceTool:
     """Click-to-place tools (text, stamp, image, signature): on release the
     matching dialog from dialogs/annotate.py opens pre-filled with the click
-    position; the returned props dict is committed as an annotation."""
+    position; the returned props dict is committed as an annotation.
+
+    Armed placement: a flow such as Fill & Sign can ARM the tool by storing
+    a prepared payload under ``state.tool_props[kind]`` (the payload prop in
+    :data:`ARMED_PAYLOAD_PROPS`, e.g. ``png_b64`` for 'signature'). The next
+    click then places the prepared annotation directly — no dialog — and
+    DISARMS (one-shot): the payload is removed, so the following click
+    re-prompts as normal.
+    """
 
     cursor = 'tcross'
 
@@ -426,6 +423,13 @@ class ClickPlaceTool:
         'stamp': 'stamp_dialog',
         'image': 'image_dialog',
         'signature': 'signature_dialog',
+    }
+
+    # Prop that arms a kind for direct one-shot placement (the standardized
+    # key shape is state.tool_props[kind][payload_prop]).
+    ARMED_PAYLOAD_PROPS = {
+        'image': 'png_b64',
+        'signature': 'png_b64',
     }
 
     def __init__(self, kind):
@@ -437,13 +441,38 @@ class ClickPlaceTool:
     def on_drag(self, window, state, x, y):
         pass
 
+    def take_armed_props(self, state):
+        """Pop a prepared one-shot payload for this tool, or return None.
+
+        When ``state.tool_props[self.kind]`` carries the kind's payload prop,
+        return the merged tool props (defaults + overrides + payload) and
+        remove the payload from ``state.tool_props`` so the arming is
+        consumed exactly once.
+        """
+        payload_prop = self.ARMED_PAYLOAD_PROPS.get(self.kind)
+        if payload_prop is None:
+            return None
+        try:
+            stored = (state.tool_props or {}).get(self.kind) or {}
+        except AttributeError:
+            return None
+        if not stored.get(payload_prop):
+            return None
+        props = tool_defaults(state, self.kind)
+        stored.pop(payload_prop, None)  # disarm: one-shot placement
+        return props
+
     def on_release(self, window, state, x, y):
         if current_container(state) is None:
             return
-        # Imported lazily so canvas_tools stays importable without dialogs.
-        from workonward_read.dialogs import annotate as annotate_dialogs
-        dialog = getattr(annotate_dialogs, self._DIALOGS[self.kind])
-        props = dialog(window, state, (int(x), int(y)))
+        props = self.take_armed_props(state)
+        if props is not None:
+            props['pos'] = [int(x), int(y)]
+        else:
+            # Imported lazily so canvas_tools stays importable without dialogs.
+            from workonward_read.dialogs import annotate as annotate_dialogs
+            dialog = getattr(annotate_dialogs, self._DIALOGS[self.kind])
+            props = dialog(window, state, (int(x), int(y)))
         if props:
             commit_annotation(window, state, self.kind, props)
 
@@ -492,9 +521,9 @@ class MeasureTool(_PreviewMixin):
         if distance_px < 1:
             return
 
-        inches = distance_px / _MEASURE_PPI
+        inches = distance_px / IMPORT_PPI
         centimeters = inches * 2.54
-        points = distance_px * 72.0 / _MEASURE_PPI
+        points = distance_px * 72.0 / IMPORT_PPI
         self._show_result(window, _(
             'Distance: {px} px  |  {cm} cm  |  {inch} in  |  {pt} pt',
             px='%.0f' % distance_px,
@@ -509,13 +538,6 @@ class MeasureTool(_PreviewMixin):
         from workonward_read.dialogs import common as dialogs_common
         dialogs_common.info_popup(window, message)
 
-
-# Tool keys for the full suite (every key is registered below).
-ALL_TOOL_KEYS = [
-    'redact', 'eraser', 'text', 'highlight', 'underline', 'strike', 'ink',
-    'rect', 'ellipse', 'line', 'arrow', 'stamp', 'image', 'signature',
-    'measure',
-]
 
 TOOLS: dict = {
     'redact': RedactTool(),
@@ -535,7 +557,6 @@ TOOLS: dict = {
     'measure': MeasureTool(),
 }
 
-
-def register_tool(key, tool):
-    """Register (or replace) a canvas tool under the given key."""
-    TOOLS[key] = tool
+# Tool keys for the full suite — derived from the registry (single source of
+# truth; ui.py's -TOOL- selector imports this list).
+ALL_TOOL_KEYS = list(TOOLS)

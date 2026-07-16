@@ -144,6 +144,10 @@ class ImageContainer:
         self.width_in_pt = size[1]
         self.scaled_image = self.image
         self.id = None
+        # Monotonically increasing bitmap version: bumped whenever
+        # self.image is swapped for a new object (rotate/crop via
+        # pdf_ops._replace_container_image). Caches (thumbnails) key on it.
+        self.image_version = 0
 
         # List of typed annotations for this page.
         self.annotations = list() if annotations is None else annotations
@@ -211,12 +215,17 @@ class ImageContainer:
         for on-screen preview. Annotations are not included here — they are
         drawn as interactive graph figures. The original image data is never
         touched, so zoom and page flips stay lossless.
+
+        The decoration metrics are rendered at the current display zoom
+        (``decor_scale``) because they burn into the already zoom-scaled
+        bitmap — otherwise the preview only matches the export at 100%.
         """
         if not decorations:
             return self.data()
         burned = annotations_engine.render_on_image(
             self.scaled_image, [], decorations, page_idx, total_pages,
-            self.height_in_pt, self.width_in_pt, default_font_dir())
+            self.height_in_pt, self.width_in_pt, default_font_dir(),
+            decor_scale=ImageContainer.zoom_factor / 100.0)
         with io.BytesIO() as output:
             burned.save(output, format='PNG')
             data = output.getvalue()
@@ -316,36 +325,6 @@ class ImageContainer:
                     graph, ann, ImageContainer.zoom_factor)
             except Exception:
                 ann.graph_ids = []
-
-    def draw_rectangle(self, window, start_point, end_point, fill='black'):
-        """Compatibility path for the classic redaction flow: convert
-        graph-space (zoomed) points back to original px, add a 'redact'
-        annotation and draw it on the graph.
-
-        Note: does NOT push an undo snapshot — canvas tools go through
-        ``canvas_tools.commit_annotation`` which does.
-        """
-        try:
-            factor = ImageContainer.zoom_factor / 100
-
-            start_point_in_original = [int(start_point[0] / factor),
-                                       int(start_point[1] / factor)]
-            end_point_in_original = [int(end_point[0] / factor),
-                                     int(end_point[1] / factor)]
-
-            ann = self.add_annotation('redact', {
-                'p1': start_point_in_original,
-                'p2': end_point_in_original,
-                'fill': fill,
-            })
-            try:
-                annotations_engine.render_on_graph(
-                    window['-GRAPH-'], ann, ImageContainer.zoom_factor)
-            except Exception:
-                ann.graph_ids = []
-        except ValueError:
-            pass
-        return self
 
 
 def export_annotations(pages):

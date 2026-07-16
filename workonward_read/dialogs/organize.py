@@ -18,8 +18,10 @@ import os
 
 import FreeSimpleGUI as sg
 
-from workonward_read.dialogs.common import (centered, error_popup,
-                                            file_open_row, parse_page_ranges)
+from workonward_read.dialogs.common import (error_popup, file_open_row,
+                                            open_modal as _open_modal,
+                                            parse_page_ranges)
+from workonward_read.geometry import PT_PER_PX, PX_PER_PT
 from workonward_read.i18n import _
 
 PDF_FILE_TYPES = (('PDF', '*.pdf *.PDF'),)
@@ -90,16 +92,16 @@ def margins_to_box(margins, unit, width_px, height_px):
     except (TypeError, ValueError) as exc:
         raise ValueError(f'Invalid margin values: {margins!r}') from exc
     if min(left, top, right, bottom) < 0:
-        raise ValueError('Margins must not be negative.')
+        raise ValueError(_('Margins must not be negative.'))
     if unit == 'pt':
-        factor = 200.0 / 72.0
-        left, top, right, bottom = (v * factor for v in (left, top, right, bottom))
+        left, top, right, bottom = (v * PX_PER_PT
+                                    for v in (left, top, right, bottom))
     elif unit != 'px':
         raise ValueError(f'Unknown margin unit: {unit!r}')
     x0, y0 = left, top
     x1, y1 = width_px - right, height_px - bottom
     if x1 - x0 < 1 or y1 - y0 < 1:
-        raise ValueError('Margins leave no page area to keep.')
+        raise ValueError(_('Margins leave no page area to keep.'))
     return [x0, y0, x1, y1]
 
 
@@ -121,29 +123,31 @@ def validate_compress_request(request):
         raise ValueError(f'Unknown compression mode: {mode!r}')
     input_path = (request.get('input') or '').strip()
     if not input_path:
-        raise ValueError('An input PDF is required.')
+        raise ValueError(_('An input PDF is required.'))
     if not os.path.isfile(input_path):
         raise ValueError(f'File not found: {input_path}')
     output = (request.get('output') or '').strip()
     if not output:
-        raise ValueError('An output path is required.')
+        raise ValueError(_('An output path is required.'))
     if os.path.abspath(output) == os.path.abspath(input_path):
-        raise ValueError('Output must differ from the input file.')
+        raise ValueError(_('Output must differ from the input file.'))
     try:
         quality = int(request.get('quality', 85))
     except (TypeError, ValueError) as exc:
-        raise ValueError('Quality must be a number between 1 and 100.') from exc
+        raise ValueError(
+            _('Quality must be a number between 1 and 100.')) from exc
     if not 1 <= quality <= 100:
-        raise ValueError('Quality must be a number between 1 and 100.')
+        raise ValueError(_('Quality must be a number between 1 and 100.'))
     normalized = {'mode': mode, 'input': input_path, 'output': output,
                   'quality': quality}
     if mode == 'raster':
         try:
             dpi = int(request.get('dpi', 110))
         except (TypeError, ValueError) as exc:
-            raise ValueError('DPI must be a number between 72 and 200.') from exc
+            raise ValueError(
+                _('DPI must be a number between 72 and 200.')) from exc
         if not 72 <= dpi <= 200:
-            raise ValueError('DPI must be a number between 72 and 200.')
+            raise ValueError(_('DPI must be a number between 72 and 200.'))
         normalized['dpi'] = dpi
     return normalized
 
@@ -151,12 +155,6 @@ def validate_compress_request(request):
 # ---------------------------------------------------------------------------
 # Dialog plumbing
 # ---------------------------------------------------------------------------
-
-def _open_modal(title, layout, window):
-    return sg.Window(
-        title, layout, modal=True, keep_on_top=True, finalize=True,
-        location=centered(window))
-
 
 def _read_and_close(dialog):
     event, values = dialog.read()
@@ -415,8 +413,8 @@ def crop_dialog(window, total, current, width_px, height_px):
     """Crop dialog (numeric margins). Returns
     ``{'margins': (l, t, r, b), 'unit': 'px'|'pt', 'scope':
     'current'|'all'}`` or None."""
-    width_pt = width_px * 72.0 / 200.0
-    height_pt = height_px * 72.0 / 200.0
+    width_pt = width_px * PT_PER_PX
+    height_pt = height_px * PT_PER_PX
     layout = [
         [sg.Text(_('Current page: {w_px} x {h_px} px ({w_pt} x {h_pt} pt)',
                    w_px=int(width_px), h_px=int(height_px),

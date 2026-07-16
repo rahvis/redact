@@ -14,9 +14,12 @@ business modules raise exceptions with plain-English messages and return data.
 ## Coordinates
 
 Canvas/annotation coordinates are in ORIGINAL-image pixel space at 200 PPI
-(`import_ppi = 200`), y-down, exactly like the existing rectangle model.
-Conversions: `px = pt * 200/72`, `pt = px * 72/200`. PDF y-axis is flipped
-(`y_pt = page_height_pt - y_px * 72/200`).
+(`geometry.IMPORT_PPI = 200`), y-down, exactly like the existing rectangle
+model. Conversions: `px = pt * 200/72`, `pt = px * 72/200`. PDF y-axis is
+flipped (`y_pt = page_height_pt - y_px * 72/200`). The constant trio
+`IMPORT_PPI` / `PT_PER_PX` / `PX_PER_PT` lives in `geometry.py` (the pure
+home) and is imported from there everywhere (pdf_ops re-exports it for
+convenience).
 
 LEGACY container size convention: `ImageContainer.size` keeps the order the
 loader handed in — pdfium's `page.get_size()` = `(width_pt, height_pt)` — so
@@ -69,8 +72,9 @@ class AppState:
     thumbnails_visible: bool = False
 ```
 
-Runtime-only helpers (not persisted): `import_ppi`, `workfile_manager`,
-`icons`, plus the orchestration fields:
+Runtime-only helpers (not persisted): `workfile_manager`, `icons`, plus
+the orchestration fields (the render resolution is the shared constant
+`geometry.IMPORT_PPI`, no longer a state field):
 
 - `doc_lock: set` — busy set of reasons for background tasks currently
   USING the loaded document (`state.images` / `state.journal`), managed via
@@ -265,11 +269,21 @@ blocking and stay as-is.
 ## Dialogs (`workonward_read/dialogs/`)
 
 One module per group mirroring handlers. Each dialog: `modal=True, keep_on_top=True`,
-centered via `workonward_read.dialogs.common.centered(parent_window)`, returns a plain request
-dict or None. Shared helpers in `workonward_read/dialogs/common.py`: `centered`, `error_popup`,
-`info_popup`, `require_document_free`, `file_open_row`,
+created via `workonward_read.dialogs.common.open_modal(title, layout, parent_window)`
+(the ONE shared modal constructor, centered over the parent), returns a
+plain request dict or None. Shared helpers in `workonward_read/dialogs/common.py`:
+`centered`, `open_modal`, `error_popup`, `info_popup`,
+`require_document_free`, `file_open_row`,
 `parse_page_ranges("1-3,7,9-") -> list[int]` (0-based,
 open-ended supported, raises ValueError with offending token).
+
+Sanctioned exception — non-modal aux windows: long-lived secondary
+windows that must not block the main loop (currently the search finder and
+the compare results window, both owned by `handlers/review.py`) are NOT
+dialogs. They follow the aux-window contract above ("Aux windows"):
+`modal=False`, registered in `state.aux_windows`, events routed by
+main.py's `read_all_windows()` loop, no nested read loops. Anything else
+stays a blocking modal dialog.
 
 ## pdfium access (`workonward_read/pdfium_io.py`)
 

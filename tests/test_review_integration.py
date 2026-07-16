@@ -272,6 +272,53 @@ def test_clear_temp_figures_tolerates_empty():
 
 
 # ---------------------------------------------------------------------------
+# navigate_to_hit: same-page hits skip the full page flip
+# ---------------------------------------------------------------------------
+
+def test_navigate_to_hit_same_page_skips_flip(monkeypatch):
+    window = FakeWindow()
+    state = AppState()
+    state.images = [object(), object()]
+    state.current_page = 1
+
+    flips = []
+    monkeypatch.setattr(
+        review, 'flip_to_page',
+        lambda win, images, page, st: flips.append(page) or page)
+
+    ids = review.navigate_to_hit(window, state, 1, [[10, 20, 30, 40]], [],
+                                 zoom_factor=100)
+    assert flips == []                       # no redundant page flip
+    assert state.current_page == 1
+    assert len(ids) == 1                     # outlines still drawn
+
+    # Selecting the next same-page hit clears the previous outlines first.
+    ids2 = review.navigate_to_hit(window, state, 1, [[1, 2, 3, 4]], ids,
+                                  zoom_factor=100)
+    assert flips == []
+    assert window.graph.deleted == ids
+    assert ids2 and ids2 != ids
+
+
+def test_navigate_to_hit_other_page_flips(monkeypatch):
+    window = FakeWindow()
+    state = AppState()
+    state.images = [object(), object(), object()]
+    state.current_page = 2
+
+    flips = []
+    monkeypatch.setattr(
+        review, 'flip_to_page',
+        lambda win, images, page, st: flips.append(page) or page)
+
+    ids = review.navigate_to_hit(window, state, 0, [[10, 20, 30, 40]], [],
+                                 zoom_factor=100)
+    assert flips == [0]
+    assert state.current_page == 0
+    assert len(ids) == 1
+
+
+# ---------------------------------------------------------------------------
 # Compare core
 # ---------------------------------------------------------------------------
 

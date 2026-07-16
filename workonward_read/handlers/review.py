@@ -165,6 +165,26 @@ def clear_temp_figures(window, figure_ids):
     return []
 
 
+def navigate_to_hit(window, state, current, rects, temp_ids,
+                    zoom_factor=None):
+    """Show one (already remapped) hit on the main window.
+
+    Clears the previous temporary outlines, flips to the hit's page ONLY
+    when it is not the currently displayed one (flipping re-renders the
+    whole graph — skipping it keeps clicking through same-page hits cheap),
+    and draws the hit outlines at the current zoom.
+
+    Returns the new list of temporary figure ids.
+    """
+    temp_ids = clear_temp_figures(window, temp_ids)
+    if current != state.current_page:
+        state.current_page = flip_to_page(window, state.images, current,
+                                          state)
+    if zoom_factor is None:
+        zoom_factor = ImageContainer.zoom_factor
+    return draw_hit_outlines(window, rects, zoom_factor)
+
+
 # ---------------------------------------------------------------------------
 # Compare: headless core functions
 # ---------------------------------------------------------------------------
@@ -310,20 +330,18 @@ def _make_finder_handler(window, state, finder):
         except Exception:
             pass
         counter = f'{index + 1} / {len(hits)}'
-        # flip_to_page redraws the graph (erasing old temp figures too), the
-        # explicit clear keeps the bookkeeping exact when the page is unchanged.
-        ctx['temp_ids'] = clear_temp_figures(window, ctx['temp_ids'])
         if current is None:
             # The page was deleted by a page op: skip navigation.
+            ctx['temp_ids'] = clear_temp_figures(window, ctx['temp_ids'])
             finder['-COUNT-'].update(counter + ' ' + _('(page removed)'))
             return
         if hit.rects_px and not rects:
             counter += ' ' + _('(match area cropped)')
         finder['-COUNT-'].update(counter)
-        state.current_page = flip_to_page(window, state.images,
-                                          current, state)
-        ctx['temp_ids'] = draw_hit_outlines(window, rects,
-                                            ImageContainer.zoom_factor)
+        # navigate_to_hit skips the full page flip when the hit is on the
+        # currently displayed page (clear + redraw outlines only).
+        ctx['temp_ids'] = navigate_to_hit(window, state, current, rects,
+                                          ctx['temp_ids'])
 
     def on_search_done(_win, st, hits):
         ctx['searching'] = False

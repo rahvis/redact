@@ -27,7 +27,7 @@ from multiprocessing import freeze_support
 
 import FreeSimpleGUI as sg
 
-from workonward_read import __version__, canvas_tools, tasks
+from workonward_read import __version__, canvas_tools, tasks, thumbnails
 from workonward_read.image_container import ImageContainer
 from workonward_read.workfile import WorkfileManager, get_default_datadir, serialize_journal
 from workonward_read.state import AppState
@@ -208,6 +208,12 @@ def main():
         # are routed centrally no matter which window they arrived on.
         if tasks.is_task_event(event):
             _handle_task_event(window, state, event, values)
+            continue
+
+        # Thumbnail sidebar clicks arrive as ('-THUMB-', idx, 'CLICK')
+        # tuple events posted to the main window.
+        if isinstance(event, tuple) and event and event[0] == '-THUMB-':
+            thumbnails.handle_thumb_event(window, state, event)
             continue
 
         # Events belonging to a registered non-modal secondary window.

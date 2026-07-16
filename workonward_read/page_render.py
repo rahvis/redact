@@ -22,12 +22,10 @@ Acrobat-suite additions (c) 2026 CoverUP contributors
 from PIL import Image
 
 from workonward_read import pdfium_io
+# Application-wide import resolution — canonical home: geometry.py.
+from workonward_read.geometry import IMPORT_PPI, PX_PER_PT
 from workonward_read.image_container import ImageContainer
 from workonward_read.pdfium_io import PDFIUM_LOCK
-
-# Application-wide import resolution (see docs/dev-architecture.md).
-IMPORT_PPI = 200
-PX_PER_PT = IMPORT_PPI / 72.0
 
 
 def make_blank(w_pt, h_pt):

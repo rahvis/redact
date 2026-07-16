@@ -280,6 +280,50 @@ def test_finalized_image_jpeg_bytes():
     img.close()
 
 
+def test_display_data_scales_decorations_with_zoom():
+    """At 50% zoom the preview footer text is ~half the 100% preview's
+    height (and stays horizontally centered) — the decoration metrics are
+    rendered at the display zoom, not at original-px sizes."""
+    decorations = {'page_numbers': {'template': 'PAGE {page} OF {total}',
+                                    'start_at': 1,
+                                    'position': 'footer-center',
+                                    'size_px': 48}}
+
+    def dark_bbox(img):
+        mask = img.convert('L').point(lambda v: 255 if v < 128 else 0)
+        return mask.getbbox()
+
+    old_zoom = ImageContainer.zoom_factor
+    try:
+        container = ImageContainer(Image.new('RGB', PAGE_PX, WHITE), PAGE_PT)
+        ImageContainer.zoom_factor = 100
+        container.scale_image()
+        full = Image.open(io.BytesIO(container.display_data(
+            decorations, 0, 1)))
+        full.load()
+
+        ImageContainer.zoom_factor = 50
+        container.scale_image()
+        half = Image.open(io.BytesIO(container.display_data(
+            decorations, 0, 1)))
+        half.load()
+    finally:
+        ImageContainer.zoom_factor = old_zoom
+
+    full_box, half_box = dark_bbox(full), dark_bbox(half)
+    assert full_box and half_box
+    full_h = full_box[3] - full_box[1]
+    half_h = half_box[3] - half_box[1]
+    assert abs(half_h - full_h / 2.0) <= max(2.0, 0.15 * full_h / 2.0)
+
+    full_center = (full_box[0] + full_box[2]) / 2.0 / full.width
+    half_center = (half_box[0] + half_box[2]) / 2.0 / half.width
+    assert abs(full_center - 0.5) < 0.02
+    assert abs(half_center - 0.5) < 0.02
+    full.close()
+    half.close()
+
+
 def test_display_data_burns_decorations_without_touching_original():
     container = build_containers()[1]
     data = container.display_data(DECORATIONS, 1, 3)

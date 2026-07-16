@@ -9,10 +9,9 @@ px-wide cached PNG thumbnails into ``sg.Image`` elements with tuple keys
 Event routing: ``main.py`` treats every 2-tuple event as a background-task
 event, so thumbnail clicks are delivered as 3-tuple events
 ``('-THUMB-', idx, 'CLICK')`` (posted from a Tk ``<Button-1>`` binding via
-``window.write_event_value``). For each thumbnail a per-key entry is
-registered in the merged ``workonward_read.handlers.HANDLERS`` registry
-(the same dict object ``main.py`` dispatches through), which calls
-:func:`handle_thumb_event` to flip to the clicked page.
+``window.write_event_value``). ``main.py`` routes every tuple event whose
+first element is ``'-THUMB-'`` to :func:`handle_thumb_event`, which flips
+to the clicked page — no per-key handler registration.
 
 Documents with more than :data:`MAX_THUMB_PAGES` pages skip thumbnail
 generation (a popup notes it once per window).
@@ -23,6 +22,7 @@ Acrobat-suite additions (c) 2026 CoverUP contributors
 """
 
 import io
+import weakref
 
 import FreeSimpleGUI as sg
 from PIL import Image
@@ -33,10 +33,14 @@ THUMB_WIDTH = 120
 MAX_THUMB_PAGES = 500
 SIDEBAR_WIDTH = 170
 
-# Per-window bookkeeping: id(window) -> number of thumbnail rows created.
-_ROW_COUNT = {}
+# Per-window bookkeeping, keyed by the window object itself (weakly, so
+# closed windows never leak entries): number of thumbnail rows created.
+_ROW_COUNT = weakref.WeakKeyDictionary()
 # Windows already notified about the >MAX_THUMB_PAGES skip.
-_SKIP_NOTIFIED = set()
+_SKIP_NOTIFIED = weakref.WeakKeyDictionary()
+# Last PNG bytes pushed into each window's sg.Image elements
+# (window -> {idx: bytes}); lets refresh skip unchanged thumbnails.
+_PUSHED = weakref.WeakKeyDictionary()
 
 
 def build_sidebar_column():
@@ -70,12 +74,13 @@ def build_sidebar_column():
 def thumbnail_png(container, width=THUMB_WIDTH):
     """Return (cached) PNG bytes of a ``width`` px wide thumbnail of the
     container's image. The cache lives on the container and is invalidated
-    when the underlying image object (or its size) changes — page ops such
-    as rotate/crop swap ``container.image`` for a new object."""
+    when ``container.image_version`` (bumped on every image swap — rotate/
+    crop go through ``pdf_ops._replace_container_image``) or the image size
+    changes."""
     image = getattr(container, 'image', None)
     if image is None:
         return None
-    cache_key = (id(image), image.size, width)
+    cache_key = (getattr(container, 'image_version', 0), image.size, width)
     cached = getattr(container, '_thumb_cache', None)
     if cached is not None and cached[0] == cache_key:
         return cached[1]
@@ -107,23 +112,12 @@ def handle_thumb_event(window, state, event):
 
 def _update_captions(window, count, current_page):
     """Recolor the page-number captions so the current page stands out."""
-    for idx in range(min(count, _ROW_COUNT.get(id(window), count))):
+    for idx in range(min(count, _ROW_COUNT.get(window, count))):
         try:
             window[('-THUMB_LABEL-', idx)].update(
                 text_color='yellow' if idx == current_page else 'white')
         except Exception:
             pass
-
-
-def _register_click_handler(idx):
-    """Register a per-key entry for ('-THUMB-', idx, 'CLICK') in the merged
-    handler registry that main.py dispatches through."""
-    from workonward_read import handlers as registry
-    key = ('-THUMB-', idx, 'CLICK')
-    if key not in registry.HANDLERS:
-        registry.HANDLERS[key] = (
-            lambda window, state, _i=idx:
-            handle_thumb_event(window, state, ('-THUMB-', _i)))
 
 
 def _bind_click(window, idx):
@@ -145,10 +139,12 @@ def refresh_thumbnails(window, images, current_page=0, notify=None):
     """
     Render/refresh the sidebar thumbnails for ``images``.
 
-    Existing ``('-THUMB-', idx)`` elements are updated in place; missing
-    ones are appended to ``'-THUMBS_INNER-'`` via ``window.extend_layout``
-    (with click bindings and per-key handler registration); surplus ones
-    from a previously larger document are hidden.
+    Existing ``('-THUMB-', idx)`` elements are updated in place — but ONLY
+    when their page bitmap changed since the last refresh (tracked via the
+    container thumbnail cache; captions are always recolored). Missing
+    elements are appended to ``'-THUMBS_INNER-'`` via
+    ``window.extend_layout`` (with click bindings); surplus ones from a
+    previously larger document are hidden.
 
     Documents with more than :data:`MAX_THUMB_PAGES` pages skip generation;
     ``notify(window, message)`` (default: ``dialogs.common.info_popup``)
@@ -159,8 +155,8 @@ def refresh_thumbnails(window, images, current_page=0, notify=None):
     """
     images = images or []
     if len(images) > MAX_THUMB_PAGES:
-        if id(window) not in _SKIP_NOTIFIED:
-            _SKIP_NOTIFIED.add(id(window))
+        if not _SKIP_NOTIFIED.get(window):
+            _SKIP_NOTIFIED[window] = True
             if notify is None:
                 from workonward_read.dialogs.common import info_popup
                 notify = info_popup
@@ -171,9 +167,10 @@ def refresh_thumbnails(window, images, current_page=0, notify=None):
             except Exception:
                 pass
         return False
-    _SKIP_NOTIFIED.discard(id(window))
+    _SKIP_NOTIFIED.pop(window, None)
 
-    existing = _ROW_COUNT.get(id(window), 0)
+    existing = _ROW_COUNT.get(window, 0)
+    pushed = _PUSHED.setdefault(window, {})
     new_rows = []
     for idx, container in enumerate(images):
         data = thumbnail_png(container)
@@ -181,7 +178,11 @@ def refresh_thumbnails(window, images, current_page=0, notify=None):
         color = 'yellow' if idx == current_page else 'white'
         if idx < existing:
             try:
-                window[('-THUMB-', idx)].update(data=data, visible=True)
+                # thumbnail_png returns the SAME cached bytes object while a
+                # page is unchanged: skip pushing identical image data.
+                if pushed.get(idx) is not data:
+                    window[('-THUMB-', idx)].update(data=data, visible=True)
+                    pushed[idx] = data
                 window[('-THUMB_LABEL-', idx)].update(
                     value=caption, visible=True, text_color=color)
             except Exception:
@@ -193,7 +194,7 @@ def refresh_thumbnails(window, images, current_page=0, notify=None):
             new_rows.append([sg.Text(
                 caption, key=('-THUMB_LABEL-', idx), pad=((16, 16), (0, 8)),
                 text_color=color, background_color='grey')])
-        _register_click_handler(idx)
+            pushed[idx] = data
 
     if new_rows:
         try:
@@ -203,15 +204,17 @@ def refresh_thumbnails(window, images, current_page=0, notify=None):
         for idx in range(existing, len(images)):
             _bind_click(window, idx)
 
-    # Hide leftovers from a previously larger document.
+    # Hide leftovers from a previously larger document (and forget their
+    # pushed data so they are re-pushed when they become visible again).
     for idx in range(len(images), existing):
         try:
             window[('-THUMB-', idx)].update(visible=False)
             window[('-THUMB_LABEL-', idx)].update(visible=False)
         except Exception:
             pass
+        pushed.pop(idx, None)
 
-    _ROW_COUNT[id(window)] = max(existing, len(images))
+    _ROW_COUNT[window] = max(existing, len(images))
 
     # Let the scrollable column pick up the new content size.
     try:

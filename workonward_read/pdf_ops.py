@@ -31,11 +31,9 @@ from pypdf.constants import UserAccessPermissions
 from pypdf.generic import RectangleObject
 
 from workonward_read import geometry
-
-# Application-wide import resolution (see docs/dev-architecture.md).
-IMPORT_PPI = 200
-PT_PER_PX = 72.0 / IMPORT_PPI
-PX_PER_PT = IMPORT_PPI / 72.0
+# Application-wide import resolution — canonical home: geometry.py
+# (re-exported here for existing pdf_ops.IMPORT_PPI/... consumers).
+from workonward_read.geometry import IMPORT_PPI, PT_PER_PX, PX_PER_PT  # noqa: F401
 
 # PIL transpose constants for CLOCKWISE rotation by degrees.
 # (PIL's ROTATE_* constants rotate counterclockwise.)
@@ -67,8 +65,13 @@ def _decrypt(reader, path, password):
 
 
 @contextmanager
-def _open_reader(path, password=None):
-    """Yield a decrypted PdfReader for `path`, closing the file afterwards."""
+def open_reader(path, password=None):
+    """Yield a decrypted PdfReader for `path`, closing the file afterwards.
+
+    The ONE canonical pypdf open-with-decrypt helper: forms.py, signing.py
+    and the pdf_ops functions below all open PDFs through it. Raises
+    FileNotFoundError for missing files and ValueError on password problems.
+    """
     if not path or not os.path.isfile(path):
         raise FileNotFoundError(f"File not found: {path}")
     with open(path, "rb") as fh:
@@ -82,6 +85,27 @@ def _check_page_index(idx, page_count, path):
         raise ValueError(
             f"Page index {idx!r} out of range for '{path}' ({page_count} pages)."
         )
+
+
+def page_size_pt(input, page_index, password=None):
+    """Return (width_pt, height_pt) of a page's mediabox.
+
+    The shared page-size helper used by signing.py and handlers/sign.py.
+
+    Raises:
+        IndexError: If page_index is out of range.
+        ValueError: If the file is encrypted and the password is
+            missing or wrong.
+        FileNotFoundError: If the file does not exist.
+    """
+    with open_reader(input, password) as reader:
+        if page_index < 0 or page_index >= len(reader.pages):
+            raise IndexError(
+                f"Page index {page_index} out of range "
+                f"(document has {len(reader.pages)} pages)."
+            )
+        box = reader.pages[page_index].mediabox
+        return float(box.width), float(box.height)
 
 
 def _replace_container_image(container, new_image):
@@ -112,6 +136,9 @@ def _replace_container_image(container, new_image):
             rescale()
         except Exception:
             pass
+    # Bump the monotonic image version so caches keyed on it (thumbnails)
+    # know the bitmap changed.
+    container.image_version = getattr(container, "image_version", 0) + 1
 
 
 def _set_container_size(container, size0_pt, size1_pt):
@@ -158,7 +185,7 @@ def merge_pdfs(inputs, output, passwords=None):
     total = 0
     with ExitStack() as stack:
         for path in inputs:
-            reader = stack.enter_context(_open_reader(path, passwords.get(path)))
+            reader = stack.enter_context(open_reader(path, passwords.get(path)))
             writer.append(reader)
             total += len(reader.pages)
         writer.write(output)
@@ -181,7 +208,7 @@ def split_pdf(input, ranges, output_pattern, password=None):
     if "{n" not in output_pattern:
         raise ValueError("output_pattern must contain a '{n}' placeholder.")
     outputs = []
-    with _open_reader(input, password) as reader:
+    with open_reader(input, password) as reader:
         page_count = len(reader.pages)
         for n, (start, end) in enumerate(ranges, start=1):
             _check_page_index(start, page_count, input)
@@ -202,7 +229,7 @@ def extract_pages(input, pages, output, password=None):
     pages = list(pages)
     if not pages:
         raise ValueError("At least one page index is required for extraction.")
-    with _open_reader(input, password) as reader:
+    with open_reader(input, password) as reader:
         page_count = len(reader.pages)
         writer = PdfWriter()
         for idx in pages:
@@ -251,7 +278,7 @@ def set_passwords(input, output, user_pw=None, owner_pw=None, allow_print=True,
                    | UserAccessPermissions.FILL_FORM_FIELDS
                    | UserAccessPermissions.ASSEMBLE_DOC)
 
-    with _open_reader(input, password) as reader:
+    with open_reader(input, password) as reader:
         writer = PdfWriter(clone_from=reader)
         writer.encrypt(
             user_password=user_pw or "",
@@ -299,7 +326,7 @@ def sanitize(input, output, password=None, strip_metadata=True,
         dict: ``{"removed": [description, ...]}`` listing what was removed.
     """
     removed = []
-    with _open_reader(input, password) as reader:
+    with open_reader(input, password) as reader:
         writer = PdfWriter(clone_from=reader)
         root = writer._root_object
 
@@ -364,7 +391,7 @@ def read_properties(input, password=None):
         raw PDF date string otherwise; page_size_pt is (width, height) of the
         first page in points or None for a zero-page document.
     """
-    with _open_reader(input, password) as reader:
+    with open_reader(input, password) as reader:
         encrypted = reader.is_encrypted
         meta = reader.metadata
 
@@ -435,7 +462,7 @@ def write_properties(input, output, metadata, password=None):
         if isinstance(value, datetime):
             value = value.strftime("D:%Y%m%d%H%M%S")
         info[pdf_key] = str(value)
-    with _open_reader(input, password) as reader:
+    with open_reader(input, password) as reader:
         writer = PdfWriter(clone_from=reader)
         if info:
             writer.add_metadata(info)
@@ -452,7 +479,7 @@ def rotate_pages(input, output, rotations, password=None):
     Args:
         rotations: dict mapping 0-based page index to degrees (multiple of 90).
     """
-    with _open_reader(input, password) as reader:
+    with open_reader(input, password) as reader:
         page_count = len(reader.pages)
         for idx, degrees in rotations.items():
             _check_page_index(idx, page_count, input)

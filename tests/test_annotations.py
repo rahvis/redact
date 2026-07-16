@@ -332,6 +332,56 @@ def test_unknown_kind_raises():
         render(white_page(), [{'id': 'x', 'kind': 'sparkle', 'props': {}}])
 
 
+def _full_page_highlight_blend(page, p1, p2, color, alpha):
+    """Replicate the previous full-page-overlay highlight arithmetic."""
+    from PIL import ImageDraw
+    base = page.convert('RGBA')
+    overlay = Image.new('RGBA', base.size, (0, 0, 0, 0))
+    ImageDraw.Draw(overlay).rectangle(
+        an._norm_box(p1, p2), fill=an._rgba(color, round(alpha * 255)))
+    expected = Image.alpha_composite(base, overlay).convert('RGB')
+    overlay.close()
+    base.close()
+    return expected
+
+
+def test_highlight_bbox_overlay_pixel_equal_to_full_page_blend():
+    """The bbox-sized highlight overlay must blend pixel-identically to the
+    old full-page-overlay implementation (gradient background so any blend
+    or offset error shows)."""
+    w, h = 300, 200
+    page = Image.new('RGB', (w, h))
+    page.putdata([((x * 7) % 256, (y * 5) % 256, (x + y) % 256)
+                  for y in range(h) for x in range(w)])
+    p1, p2 = [35, 20], [220, 140]
+    color, alpha = '#3366ff', 0.35
+
+    out = render(page, [make_ann('highlight', p1=p1, p2=p2,
+                                 color=color, alpha=alpha)])
+    expected = _full_page_highlight_blend(page, p1, p2, color, alpha)
+    assert out.tobytes() == expected.tobytes()
+
+
+def test_highlight_bbox_overlay_clamps_out_of_page_boxes():
+    """Boxes reaching outside the page blend exactly like the old code
+    (PIL clipped the full-page overlay drawing to the page)."""
+    w, h = 120, 90
+    page = Image.new('RGB', (w, h))
+    page.putdata([((x * 3) % 256, (y * 11) % 256, 200)
+                  for y in range(h) for x in range(w)])
+    p1, p2 = [-10, -10], [50, 60]
+
+    out = render(page, [make_ann('highlight', p1=p1, p2=p2,
+                                 color='#ffff00', alpha=0.4)])
+    expected = _full_page_highlight_blend(page, p1, p2, '#ffff00', 0.4)
+    assert out.tobytes() == expected.tobytes()
+
+    # fully outside the page: no-op, no crash
+    off = render(page, [make_ann('highlight', p1=[500, 500], p2=[600, 600],
+                                 color='#ffff00', alpha=0.4)])
+    assert off.tobytes() == page.convert('RGB').tobytes()
+
+
 # ---------------------------------------------------------------------------
 # Decorations
 # ---------------------------------------------------------------------------
@@ -387,6 +437,58 @@ def test_bates_footer_pixels():
                for x in range(w // 2, w - 10, 2)
                for y in range(h - 60, h - 10, 2))
     assert dark
+
+
+def _dark_bbox(img, threshold=128):
+    """(x0, y0, x1, y1) bbox of pixels darker than ``threshold``, or None."""
+    mask = img.convert('L').point(lambda v: 255 if v < threshold else 0)
+    return mask.getbbox()
+
+
+def test_decoration_preview_scale_halves_footer_metrics():
+    """decor_scale=0.5 on a half-size bitmap renders the footer text at
+    half the size (and half the margin) of the scale-1.0 rendering, still
+    horizontally centered — the zoomed preview matches the export."""
+    decorations = {'page_numbers': {'template': 'PAGE {page} OF {total}',
+                                    'start_at': 1,
+                                    'position': 'footer-center',
+                                    'size_px': 48}}
+    full = render_on_image(white_page((800, 1000)), [], decorations, 0, 1,
+                           595.28, 841.89, FONT_DIR)
+    half = render_on_image(white_page((400, 500)), [], decorations, 0, 1,
+                           595.28, 841.89, FONT_DIR, decor_scale=0.5)
+
+    full_box = _dark_bbox(full)
+    half_box = _dark_bbox(half)
+    assert full_box and half_box
+
+    # Text height at 50% zoom is about half the 100% height.
+    full_h = full_box[3] - full_box[1]
+    half_h = half_box[3] - half_box[1]
+    assert abs(half_h - full_h / 2.0) <= max(2.0, 0.15 * full_h / 2.0)
+
+    # Bottom margin scales with the zoom too (24 px -> 12 px).
+    full_gap = full.height - full_box[3]
+    half_gap = half.height - half_box[3]
+    assert abs(half_gap - full_gap / 2.0) <= 2.0
+
+    # Horizontally centered in both renderings.
+    full_center = (full_box[0] + full_box[2]) / 2.0 / full.width
+    half_center = (half_box[0] + half_box[2]) / 2.0 / half.width
+    assert abs(full_center - 0.5) < 0.02
+    assert abs(half_center - 0.5) < 0.02
+    assert abs(full_center - half_center) < 0.02
+
+
+def test_decoration_scale_default_is_identity():
+    """The export path (no decor_scale argument) is unchanged."""
+    decorations = {'bates': {'prefix': 'AB', 'start': 1, 'digits': 4,
+                             'position': 'footer-right'}}
+    implicit = render_on_image(white_page((400, 300)), [], decorations, 0, 1,
+                               595.28, 841.89, FONT_DIR)
+    explicit = render_on_image(white_page((400, 300)), [], decorations, 0, 1,
+                               595.28, 841.89, FONT_DIR, decor_scale=1.0)
+    assert implicit.tobytes() == explicit.tobytes()
 
 
 def test_bates_and_page_number_substitution_across_3_pages():
@@ -577,6 +679,48 @@ def test_render_on_graph_all_kinds_produce_ids():
         graph = FakeGraph()
         ids = render_on_graph(graph, ann, 100)
         assert ids, 'no figure ids for kind %s' % ann.kind
+
+
+def test_render_on_graph_image_png_cached_per_zoom_and_scale(monkeypatch):
+    """Image/signature previews cache the decoded+scaled+re-encoded PNG on
+    the annotation (transient), keyed by (zoom, scale, payload)."""
+    calls = {'decode': 0}
+    real_decode = an._decode_png
+
+    def counting_decode(png_b64):
+        calls['decode'] += 1
+        return real_decode(png_b64)
+
+    monkeypatch.setattr(an, '_decode_png', counting_decode)
+
+    ann = make_ann('signature', pos=[10, 10], png_b64=red_png_b64(),
+                   scale=1.0)
+    render_on_graph(FakeGraph(), ann, 100)
+    assert calls['decode'] == 1
+
+    # Same zoom again (page flip / redraw): served from the cache.
+    graph = FakeGraph()
+    render_on_graph(graph, ann, 100)
+    assert calls['decode'] == 1
+    assert graph.calls and graph.calls[0][0] == 'draw_image'
+
+    # Zoom change: re-decode + re-encode.
+    render_on_graph(FakeGraph(), ann, 140)
+    assert calls['decode'] == 2
+
+    # Scale-prop change invalidates.
+    ann.props['scale'] = 2.0
+    render_on_graph(FakeGraph(), ann, 140)
+    assert calls['decode'] == 3
+
+    # Payload change invalidates.
+    ann.props['png_b64'] = red_png_b64((10, 10))
+    render_on_graph(FakeGraph(), ann, 140)
+    assert calls['decode'] == 4
+
+    # The cache is transient: never serialized.
+    assert set(to_dict(ann)) == {'id', 'kind', 'props'}
+    assert '_graph_png_cache' not in to_dict(ann)['props']
 
 
 def test_render_on_graph_ink_segments_and_text_font():

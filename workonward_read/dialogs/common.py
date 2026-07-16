@@ -29,6 +29,17 @@ def centered(window, width=370, height=400):
         return (None, None)
 
 
+def open_modal(title, layout, window):
+    """Create a modal, keep-on-top dialog window centered over ``window``.
+
+    The shared constructor for every dialogs/* modal (finalized, so elements
+    are addressable immediately). Callers own read()/close().
+    """
+    return sg.Window(
+        title, layout, modal=True, keep_on_top=True, finalize=True,
+        location=centered(window))
+
+
 def error_popup(window, message, details=None):
     """Show a modal error popup centered over the parent window."""
     args = (message,) if details is None else (message, str(details))

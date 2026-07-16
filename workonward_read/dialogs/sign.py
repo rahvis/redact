@@ -18,7 +18,9 @@ import sys
 
 import FreeSimpleGUI as sg
 
-from workonward_read.dialogs.common import centered, error_popup, file_open_row
+from workonward_read.dialogs.common import (centered, error_popup,
+                                            file_open_row,
+                                            open_modal as _open_modal)
 from workonward_read.i18n import _
 
 _PDF_FILE_TYPES = (('PDF', '*.pdf *.PDF'),)
@@ -30,12 +32,6 @@ EDITABLE_FIELD_TYPES = ('text', 'checkbox', 'radio', 'choice')
 
 _CHECK = '✓'
 _CROSS = '✗'
-
-
-def _open_modal(title, layout, window):
-    return sg.Window(
-        title, layout, modal=True, keep_on_top=True, finalize=True,
-        location=centered(window))
 
 
 def _suggest_output(input_path, suffix):

@@ -9,21 +9,12 @@ Acrobat-suite additions (c) 2026 CoverUP contributors
 import os
 import FreeSimpleGUI as sg
 
+from workonward_read.canvas_tools import ALL_TOOL_KEYS as TOOL_KEYS
 from workonward_read.menu import build_menu
 from workonward_read.thumbnails import build_sidebar_column
 from workonward_read.utils import (get_script_root, find_fonts_folder, find_assets_folder,
                                    make_icons, draw_character)
 from workonward_read.i18n import _
-
-
-# Canvas tool keys offered in the -TOOL- selector. Tools without a
-# registered implementation fall back to an informational popup until the
-# next build wave registers them (see workonward_read.canvas_tools).
-TOOL_KEYS = [
-    'redact', 'eraser', 'text', 'highlight', 'underline', 'strike', 'ink',
-    'rect', 'ellipse', 'line', 'arrow', 'stamp', 'image', 'signature',
-    'measure',
-]
 
 
 # Material Symbols glyphs for UI-icons

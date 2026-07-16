@@ -36,7 +36,6 @@ class AppState:
     thumbnails_visible: bool = False
 
     # --- runtime-only helpers (not part of the persisted contract) -------
-    import_ppi: int = 200                             # render resolution for imports
     workfile_manager: object | None = None            # workfile.WorkfileManager
     icons: dict = field(default_factory=dict)         # toolbar icon bytes by name
     # Busy set of reasons: background tasks currently USING the loaded

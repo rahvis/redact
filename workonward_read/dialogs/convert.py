@@ -16,7 +16,8 @@ import os
 
 import FreeSimpleGUI as sg
 
-from workonward_read.dialogs.common import centered, error_popup
+from workonward_read.dialogs.common import (error_popup,
+                                            open_modal as _open_modal)
 from workonward_read.i18n import _
 
 
@@ -33,12 +34,6 @@ _TARGETS = {
 
 _IMAGE_FORMATS = ['PNG', 'JPEG']
 _DPI_CHOICES = list(range(50, 601, 25))
-
-
-def _open_modal(title, layout, window):
-    return sg.Window(
-        title, layout, modal=True, keep_on_top=True, finalize=True,
-        location=centered(window))
 
 
 def _source_rows(state, file_types=_PDF_FILE_TYPES):

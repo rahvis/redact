@@ -16,11 +16,10 @@ Acrobat-suite additions (c) 2026 CoverUP contributors
 from dataclasses import dataclass, field
 
 from workonward_read import pdfium_io
+# Canvas/annotation coordinates are original-image pixels at 200 PPI;
+# canonical constant home: geometry.py.
+from workonward_read.geometry import IMPORT_PPI, PX_PER_PT as _PT_TO_PX
 from workonward_read.pdfium_io import PDFIUM_LOCK
-
-# Canvas/annotation coordinates are original-image pixels at 200 PPI.
-IMPORT_PPI = 200
-_PT_TO_PX = IMPORT_PPI / 72.0
 _CONTEXT_CHARS = 40
 
 

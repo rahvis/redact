@@ -17,7 +17,8 @@ import os
 
 import FreeSimpleGUI as sg
 
-from workonward_read.dialogs.common import centered, file_open_row
+from workonward_read.dialogs.common import (centered, file_open_row,
+                                            open_modal as _open_modal)
 from workonward_read.i18n import _
 
 
@@ -133,12 +134,6 @@ def format_sanitize_report(report):
 # ---------------------------------------------------------------------------
 # Dialog helpers
 # ---------------------------------------------------------------------------
-
-def _open_modal(title, layout, window):
-    return sg.Window(
-        title, layout, modal=True, keep_on_top=True, finalize=True,
-        location=centered(window))
-
 
 def _run_validated(title, layout, window, validator):
     """Open a modal dialog and loop until the validator accepts the values

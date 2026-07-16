@@ -23,6 +23,7 @@ from fpdf import FPDF
 from workonward_read import __version__, ui
 from workonward_read.annotations import UndoStack
 from workonward_read.document_loader import load_document
+from workonward_read.geometry import IMPORT_PPI
 from workonward_read.image_container import ImageContainer, close_all_pages, finalize_pages_chunked
 from workonward_read.handlers.view import flip_to_page
 from workonward_read.dialogs.common import require_document_free
@@ -76,7 +77,7 @@ def load_path(window, state, load_file_path, error_key='error_loading'):
         ImageContainer.zoom_factor = 100
         (images, file_path, current_page, new_fill_color, new_output_quality,
          extras) = load_document(
-            load_file_path, state.import_ppi, window, state.workfile_manager
+            load_file_path, IMPORT_PPI, window, state.workfile_manager
         )
         state.images = images
         state.file_path = file_path

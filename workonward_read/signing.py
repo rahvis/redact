@@ -21,13 +21,15 @@ Acrobat-suite additions (c) 2026 CoverUP contributors
 
 from typing import Optional, Union
 
-# Pixel <-> point conversion at the canonical import resolution (200 PPI).
-IMPORT_PPI = 200
+from workonward_read import pdf_ops
+# Pixel <-> point conversion at the canonical import resolution (200 PPI);
+# the constants' canonical home is geometry.py.
+from workonward_read.geometry import IMPORT_PPI, PT_PER_PX
 
 
 def _px_to_pt(value_px: float) -> float:
     """Convert a length from 200-PPI pixels to PDF points."""
-    return float(value_px) * 72.0 / IMPORT_PPI
+    return float(value_px) * PT_PER_PX
 
 
 def _import_pyhanko():
@@ -69,31 +71,6 @@ def _import_pyhanko_validation():
             f"pyHanko is not available or failed to import: {exc}"
         ) from exc
     return PdfFileReader, validate_pdf_signature, ValidationContext, load_certs_from_pemder
-
-
-def _page_height_pt(input_path: str, page_index: int, password: Optional[str]) -> float:
-    """Return the mediabox height (points) of page `page_index`.
-
-    Args:
-        input_path: Path to the PDF file.
-        page_index: Zero-based page index.
-        password: Optional password for encrypted files.
-
-    Raises:
-        IndexError: If page_index is out of range.
-        ValueError: If the file is encrypted and no valid password was given.
-    """
-    from pypdf import PdfReader
-
-    reader = PdfReader(input_path)
-    if reader.is_encrypted:
-        if not reader.decrypt(password or ""):
-            raise ValueError("The PDF is encrypted and the password is missing or wrong.")
-    if page_index < 0 or page_index >= len(reader.pages):
-        raise IndexError(
-            f"Page index {page_index} out of range (document has {len(reader.pages)} pages)."
-        )
-    return float(reader.pages[page_index].mediabox.height)
 
 
 def sign_pdf(
@@ -157,7 +134,8 @@ def sign_pdf(
             raise ValueError(
                 "visible must be a dict with 'page_index' and 'rect_px' [x0, y0, x1, y1]."
             ) from exc
-        page_h_pt = _page_height_pt(input, page_index, password)
+        _page_w_pt, page_h_pt = pdf_ops.page_size_pt(input, page_index,
+                                                     password)
         left_px, right_px = min(x0, x1), max(x0, x1)
         top_px, bottom_px = min(y0, y1), max(y0, y1)
         # y-down px -> y-up pt: lower edge of the box comes from the larger px y.

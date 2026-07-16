@@ -23,7 +23,7 @@ Acrobat-suite additions (c) 2026 CoverUP contributors
 
 import os
 
-from workonward_read import convert, page_render, pdf_ops, tasks, thumbnails
+from workonward_read import convert, geometry, page_render, pdf_ops, tasks, thumbnails
 from workonward_read.dialogs import organize as dialogs
 from workonward_read.dialogs.common import (error_popup, info_popup,
                                             parse_page_ranges,
@@ -103,7 +103,7 @@ def delete_pages_core(state, request):
     indices = _resolve_scope(state, request.get('scope', 'current'),
                              request.get('spec', ''))
     if len(indices) >= len(state.images):
-        raise ValueError('Cannot delete every page of the document.')
+        raise ValueError(_('Cannot delete every page of the document.'))
     record_and_apply(state, ('delete', indices))
     return indices
 
@@ -112,7 +112,7 @@ def rotate_pages_core(state, request):
     """Rotate the requested pages clockwise by request['degrees']."""
     degrees = int(request.get('degrees', 90))
     if degrees % 90 != 0 or degrees % 360 == 0:
-        raise ValueError('Rotation must be 90, 180 or 270 degrees.')
+        raise ValueError(_('Rotation must be 90, 180 or 270 degrees.'))
     indices = _resolve_scope(state, request.get('scope', 'current'),
                              request.get('spec', ''))
     record_and_apply(state, ('rotate', {idx: degrees for idx in indices}))
@@ -138,8 +138,8 @@ def current_page_size_pt(state):
     """(w_pt, h_pt) of the current page derived from its image pixels
     (px -> pt at 200 PPI)."""
     image = state.images[state.current_page].image
-    return (image.width * 72.0 / page_render.IMPORT_PPI,
-            image.height * 72.0 / page_render.IMPORT_PPI)
+    return (image.width * geometry.PT_PER_PX,
+            image.height * geometry.PT_PER_PX)
 
 
 def insert_pages_core(state, request):
@@ -149,12 +149,13 @@ def insert_pages_core(state, request):
     total = len(state.images)
     position = int(request.get('position', total))
     if not 0 <= position <= total:
-        raise ValueError(f'Insert position {position + 1} is out of range.')
+        raise ValueError(_('Insert position {position} is out of range.',
+                           position=position + 1))
 
     if request.get('mode') == 'pdf':
         path = request.get('path') or ''
         if not os.path.isfile(path):
-            raise ValueError(f'File not found: {path}')
+            raise ValueError(_('File not found: {path}', path=path))
         src_pages = pdf_ops.read_properties(path)['pages']
         spec = (request.get('pages') or '').strip()
         indices = parse_page_ranges(spec, src_pages) if spec else list(range(src_pages))
@@ -298,7 +299,7 @@ def batch_core(request, progress_cb=None):
         raise ValueError(f'Unknown batch tool: {tool!r}')
     inputs = collect_batch_inputs(request['folder'])
     if not inputs:
-        raise ValueError('The folder contains no PDF files.')
+        raise ValueError(_('The folder contains no PDF files.'))
     tool_fn, out_ext, kwargs = tools[tool]
     if tool == 'pdf_images':
         # pdf_to_images' second argument is a directory; use one

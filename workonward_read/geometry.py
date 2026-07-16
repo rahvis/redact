@@ -22,6 +22,14 @@ License: GPL-3.0
 
 from workonward_read import annotations as annotations_engine
 
+# Application-wide import resolution and pixel<->point conversion factors
+# (docs/dev-architecture.md). geometry.py is the canonical home; every other
+# module (pdf_ops, convert, page_render, search, signing, GUI helpers)
+# imports the trio from here.
+IMPORT_PPI = 200
+PT_PER_PX = 72.0 / IMPORT_PPI
+PX_PER_PT = IMPORT_PPI / 72.0
+
 # Kinds whose p1/p2 describe an axis-aligned box (corner order is free and is
 # re-normalized after a transform).
 BOXED_KINDS = ('redact', 'highlight', 'underline', 'strike', 'rect', 'ellipse')

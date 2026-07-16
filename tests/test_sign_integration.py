@@ -134,13 +134,13 @@ def test_apply_fill_sign_sets_tool_and_props():
     sign_handlers.apply_fill_sign(state, 'PNG_B64_DATA')
 
     assert state.tool == 'signature'
-    # The shape the canvas signature tool consumes via tool_defaults().
+    # The ONE armed-payload shape the canvas signature tool consumes.
     assert state.tool_props['signature']['png_b64'] == 'PNG_B64_DATA'
     merged = canvas_tools.tool_defaults(state, 'signature')
     assert merged['png_b64'] == 'PNG_B64_DATA'
     assert merged['scale'] == 1.0
-    # Literal contract key kept in sync.
-    assert state.tool_props['signature_png_b64'] == 'PNG_B64_DATA'
+    # The redundant flat duplicate key is gone.
+    assert 'signature_png_b64' not in state.tool_props
 
 
 def test_apply_fill_sign_preserves_existing_scale():

@@ -23,10 +23,10 @@ from fpdf import FPDF
 from PIL import Image
 
 from workonward_read import pdfium_io
+# Import PPI used by the app when sizing image pages (see document_loader);
+# canonical home: geometry.py.
+from workonward_read.geometry import IMPORT_PPI
 from workonward_read.pdfium_io import PDFIUM_LOCK
-
-# Import PPI used by the app when sizing image pages (see document_loader).
-IMPORT_PPI = 200
 
 # Splits a text line into "columns" for the text-CSV export: one or more
 # tabs, or runs of two or more spaces, are treated as column separators.
@@ -289,60 +289,71 @@ def pdf_to_html(input_path: str, output: str, password: Optional[str] = None,
     """
     page_paragraphs = _paragraphs_per_page(input_path, password)
 
-    page_images = []
-    if embed_page_images:
-        pdf = pdfium_io.open_pdf(input_path, password)
-        try:
-            with PDFIUM_LOCK:
-                total = len(pdf)
-            for index in range(total):
-                # Render under PDFIUM_LOCK (per page); encode outside it.
-                pil_image = pdfium_io.render_page_to_pil(pdf, index,
-                                                         scale=100 / 72)
-                try:
-                    if pil_image.mode != "RGB":
-                        converted = pil_image.convert("RGB")
-                        pil_image.close()
-                        pil_image = converted
-                    with io.BytesIO() as buffer:
-                        pil_image.save(buffer, format="JPEG", quality=80)
-                        page_images.append(
-                            base64.b64encode(buffer.getvalue()).decode("ascii")
-                        )
-                finally:
-                    try:
-                        pil_image.close()
-                    except Exception:
-                        pass
-        finally:
-            pdfium_io.close_pdf(pdf)
-
     stem = os.path.splitext(os.path.basename(input_path))[0]
-    parts = [
-        "<!DOCTYPE html>",
-        '<html lang="en">',
-        "<head>",
-        '<meta charset="utf-8">',
-        f"<title>{html_module.escape(stem)}</title>",
-        "</head>",
-        "<body>",
-    ]
-    for page_index, paragraphs in enumerate(page_paragraphs):
-        parts.append(f'<section data-page="{page_index + 1}">')
-        for paragraph in paragraphs:
-            parts.append(f"<p>{html_module.escape(paragraph)}</p>")
-        if embed_page_images and page_index < len(page_images):
-            parts.append(
-                '<img alt="" style="max-width:100%" '
-                f'src="data:image/jpeg;base64,{page_images[page_index]}">'
-            )
-        parts.append("</section>")
-    parts.append("</body>")
-    parts.append("</html>")
+    # Sections are streamed to the output file page by page: with embedded
+    # page images only ONE page's rendered JPEG is in memory at a time.
+    pdf = None
+    rendered_pages = 0
+    try:
+        if embed_page_images:
+            pdf = pdfium_io.open_pdf(input_path, password)
+            with PDFIUM_LOCK:
+                rendered_pages = len(pdf)
 
-    with open(output, "w", encoding="utf-8") as fh:
-        fh.write("\n".join(parts))
+        with open(output, "w", encoding="utf-8") as fh:
+            first = True
+
+            def emit(part):
+                nonlocal first
+                fh.write(part if first else "\n" + part)
+                first = False
+
+            emit("<!DOCTYPE html>")
+            emit('<html lang="en">')
+            emit("<head>")
+            emit('<meta charset="utf-8">')
+            emit(f"<title>{html_module.escape(stem)}</title>")
+            emit("</head>")
+            emit("<body>")
+            for page_index, paragraphs in enumerate(page_paragraphs):
+                emit(f'<section data-page="{page_index + 1}">')
+                for paragraph in paragraphs:
+                    emit(f"<p>{html_module.escape(paragraph)}</p>")
+                if pdf is not None and page_index < rendered_pages:
+                    emit(
+                        '<img alt="" style="max-width:100%" '
+                        'src="data:image/jpeg;base64,'
+                        f'{_page_jpeg_b64(pdf, page_index)}">'
+                    )
+                emit("</section>")
+            emit("</body>")
+            emit("</html>")
+    finally:
+        if pdf is not None:
+            pdfium_io.close_pdf(pdf)
     return output
+
+
+def _page_jpeg_b64(pdf, index, dpi=100, quality=80):
+    """Render one page at ``dpi`` and return it as a base64 JPEG string.
+
+    Rendering happens under PDFIUM_LOCK (per page); the JPEG encode runs
+    outside the lock.
+    """
+    pil_image = pdfium_io.render_page_to_pil(pdf, index, scale=dpi / 72)
+    try:
+        if pil_image.mode != "RGB":
+            converted = pil_image.convert("RGB")
+            pil_image.close()
+            pil_image = converted
+        with io.BytesIO() as buffer:
+            pil_image.save(buffer, format="JPEG", quality=quality)
+            return base64.b64encode(buffer.getvalue()).decode("ascii")
+    finally:
+        try:
+            pil_image.close()
+        except Exception:
+            pass
 
 
 def pdf_to_csv_text(input_path: str, output: str, password: Optional[str] = None) -> str:

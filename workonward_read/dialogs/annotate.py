@@ -26,7 +26,8 @@ from PIL import Image, ImageDraw, ImageFont
 
 from workonward_read.annotations import STAMP_PRESETS
 from workonward_read.canvas_tools import tool_defaults
-from workonward_read.dialogs.common import centered, error_popup, file_open_row
+from workonward_read.dialogs.common import (error_popup, file_open_row,
+                                            open_modal as _open_modal)
 from workonward_read.i18n import _
 from workonward_read.utils import find_fonts_folder, get_resource_root
 
@@ -146,12 +147,6 @@ def ink_strokes_to_png(strokes, width_px=3, color='black', margin=8):
 # ---------------------------------------------------------------------------
 # Dialog helpers
 # ---------------------------------------------------------------------------
-
-def _open_modal(title, layout, window):
-    return sg.Window(
-        title, layout, modal=True, keep_on_top=True, finalize=True,
-        location=centered(window))
-
 
 def _color_choices(default):
     choices = list(COLOR_CHOICES)

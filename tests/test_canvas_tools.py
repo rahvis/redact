@@ -298,6 +298,70 @@ def test_click_place_tool_cancel_adds_nothing(monkeypatch):
     assert 0 not in state.undo
 
 
+def test_armed_signature_placed_without_dialog_and_disarmed(monkeypatch):
+    """Fill & Sign arming: the armed payload is placed directly at the
+    click (no dialog), consumed one-shot, and the next click re-prompts."""
+    from workonward_read.dialogs import annotate as annotate_dialogs
+    from workonward_read.handlers.sign import apply_fill_sign
+
+    window, state = FakeWindow(), make_state()
+    dialog_calls = []
+    monkeypatch.setattr(
+        annotate_dialogs, 'signature_dialog',
+        lambda win, st, pos: dialog_calls.append(pos) or None)
+
+    apply_fill_sign(state, 'ARMED_PNG_B64')
+    assert state.tool == 'signature'
+
+    TOOLS['signature'].on_release(window, state, 120, 340)
+    assert dialog_calls == []                       # no re-prompt
+    anns = state.images[0].annotations
+    assert len(anns) == 1
+    assert anns[0].kind == 'signature'
+    assert anns[0].props['png_b64'] == 'ARMED_PNG_B64'
+    assert anns[0].props['pos'] == [120, 340]
+    assert anns[0].props['scale'] == 1.0
+    assert state.undo[0].can_undo()                 # undo snapshot pushed
+    # DISARMED: the payload was consumed...
+    assert 'png_b64' not in state.tool_props['signature']
+
+    # ...so the next click routes to the dialog again (which cancels here).
+    TOOLS['signature'].on_release(window, state, 10, 10)
+    assert dialog_calls == [(10, 10)]
+    assert len(state.images[0].annotations) == 1
+
+
+def test_armed_signature_keeps_tool_prop_overrides(monkeypatch):
+    """Arming merges tool_props overrides (e.g. scale) into the placement."""
+    from workonward_read.handlers.sign import apply_fill_sign
+
+    window, state = FakeWindow(), make_state()
+    state.tool_props['signature'] = {'scale': 2.0}
+    apply_fill_sign(state, 'PNGDATA')
+
+    TOOLS['signature'].on_release(window, state, 5, 6)
+    ann = state.images[0].annotations[0]
+    assert ann.props['scale'] == 2.0
+    assert ann.props['png_b64'] == 'PNGDATA'
+    # the persistent override survives the one-shot disarm
+    assert state.tool_props['signature'] == {'scale': 2.0}
+
+
+def test_unarmed_click_place_tool_routes_to_dialog(monkeypatch):
+    """Without an armed payload the signature tool opens its dialog."""
+    from workonward_read.dialogs import annotate as annotate_dialogs
+
+    window, state = FakeWindow(), make_state()
+    monkeypatch.setattr(
+        annotate_dialogs, 'signature_dialog',
+        lambda win, st, pos: {'pos': list(pos), 'png_b64': 'DIALOG_PNG',
+                              'scale': 1.0})
+    TOOLS['signature'].on_release(window, state, 30, 40)
+    ann = state.images[0].annotations[0]
+    assert ann.props['png_b64'] == 'DIALOG_PNG'
+    assert ann.props['pos'] == [30, 40]
+
+
 # ---------------------------------------------------------------------------
 # Measure tool
 # ---------------------------------------------------------------------------

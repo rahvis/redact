@@ -16,10 +16,11 @@ Acrobat-suite additions (c) 2026 CoverUP contributors
 
 import os
 
-from workonward_read import forms, signing, tasks
+from workonward_read import forms, pdf_ops, signing, tasks
 from workonward_read.dialogs import annotate as annotate_dialogs
 from workonward_read.dialogs import sign as sign_dialogs
 from workonward_read.dialogs.common import error_popup, info_popup
+from workonward_read.geometry import PX_PER_PT
 from workonward_read.i18n import _
 
 # Error marker returned by cert_sign_core when the PKCS#12 credentials
@@ -31,8 +32,6 @@ SIG_BOX_WIDTH_PT = 200.0
 SIG_BOX_HEIGHT_PT = 80.0
 SIG_BOX_MARGIN_PT = 36.0
 
-_PX_PER_PT = signing.IMPORT_PPI / 72.0
-
 
 # ---------------------------------------------------------------------------
 # Headless cores
@@ -42,16 +41,14 @@ def apply_fill_sign(state, png_b64):
     """Arm the canvas signature tool with a prepared signature image.
 
     Sets ``state.tool`` and stores the PNG under
-    ``state.tool_props['signature']['png_b64']`` — the shape
-    ``canvas_tools.tool_defaults(state, 'signature')`` merges for the
-    signature tool. The flat ``'signature_png_b64'`` key is kept in sync
-    for callers reading the literal contract key.
+    ``state.tool_props['signature']['png_b64']`` — the ONE armed-payload
+    shape ``canvas_tools.ClickPlaceTool`` consumes: the next click places
+    the prepared signature directly (no dialog) and disarms (one-shot).
     """
     state.tool = 'signature'
     props = state.tool_props.setdefault('signature', {})
     props['png_b64'] = png_b64
     props.setdefault('scale', 1.0)
-    state.tool_props['signature_png_b64'] = png_b64
 
 
 def bottom_right_rect_px(page_w_pt, page_h_pt,
@@ -66,33 +63,11 @@ def bottom_right_rect_px(page_w_pt, page_h_pt,
     bottom_pt = margin_pt                      # distance from page bottom
     top_pt = min(page_h_pt, bottom_pt + height_pt)
     return [
-        left_pt * _PX_PER_PT,
-        (page_h_pt - top_pt) * _PX_PER_PT,     # y-down: top edge first
-        right_pt * _PX_PER_PT,
-        (page_h_pt - bottom_pt) * _PX_PER_PT,
+        left_pt * PX_PER_PT,
+        (page_h_pt - top_pt) * PX_PER_PT,      # y-down: top edge first
+        right_pt * PX_PER_PT,
+        (page_h_pt - bottom_pt) * PX_PER_PT,
     ]
-
-
-def _page_size_pt(input_path, page_index, password=None):
-    """Return (width_pt, height_pt) of a page's mediabox.
-
-    Raises:
-        IndexError: If page_index is out of range.
-        ValueError: If the file is encrypted and the password is wrong.
-    """
-    from pypdf import PdfReader
-
-    reader = PdfReader(input_path)
-    if reader.is_encrypted:
-        if not reader.decrypt(password or ''):
-            raise ValueError(
-                'The PDF is encrypted and the password is missing or wrong.')
-    if page_index < 0 or page_index >= len(reader.pages):
-        raise IndexError(
-            f'Page index {page_index} out of range '
-            f'(document has {len(reader.pages)} pages).')
-    box = reader.pages[page_index].mediabox
-    return float(box.width), float(box.height)
 
 
 def cert_sign_core(request, progress_cb=None):
@@ -111,7 +86,7 @@ def cert_sign_core(request, progress_cb=None):
     visible = None
     page_index = request.get('visible_page')
     if page_index is not None:
-        page_w, page_h = _page_size_pt(
+        page_w, page_h = pdf_ops.page_size_pt(
             request['input'], int(page_index), request.get('password'))
         visible = {
             'page_index': int(page_index),

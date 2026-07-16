@@ -96,11 +96,11 @@ def _resolve_source(request, state):
     """
     if request.get('use_loaded'):
         if not getattr(state, 'file_path', None):
-            raise ValueError('No document is loaded.')
+            raise ValueError(_('No document is loaded.'))
         return state.file_path, getattr(state, 'source_password', None)
     input_path = (request.get('input_path') or '').strip()
     if not input_path:
-        raise ValueError('No input file was selected.')
+        raise ValueError(_('No input file was selected.'))
     return input_path, None
 
 
@@ -173,7 +173,7 @@ def run_ocr(request, state, tess_path=None, progress_cb=None):
     if request.get('use_loaded'):
         images = getattr(state, 'images', None)
         if not images:
-            raise ValueError('No document is loaded.')
+            raise ValueError(_('No document is loaded.'))
         # ImageContainer.size is (width_pt, height_pt) as handed to FPDF;
         # the attribute names are historic (height_in_pt holds size[0]).
         page_sizes_pt = [(c.height_in_pt, c.width_in_pt) for c in images]
@@ -184,7 +184,7 @@ def run_ocr(request, state, tess_path=None, progress_cb=None):
 
     input_path = (request.get('input_path') or '').strip()
     if not input_path:
-        raise ValueError('No input file was selected.')
+        raise ValueError(_('No input file was selected.'))
     return ocr.make_searchable_pdf(
         input_path, output, lang=lang, tess_path=tess_path,
         password=state.password_for(input_path),
